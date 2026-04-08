@@ -140,6 +140,63 @@ await page.click('button:has-text("기획안 한 장 PNG로 저장")');
 const dl = await downloadPromise;
 mark('21. PNG 저장 다운로드 트리거', !!dl, dl ? `파일명: ${dl.suggestedFilename()}` : '다운로드 이벤트 없음');
 
+// ─── 깍두기 업데이트 포팅 회귀 검증 (2026-04-08) ───
+
+// 22. ROAS 시뮬레이터 — 새 UI(입력 2개 + 신호등)
+await page.goto(url + '#roas-simulator');
+await page.waitForTimeout(400);
+const hasNewRoas = await page.locator('#rsAdSpend, #rsRevenue').count();
+mark('22. ROAS 새 입력 필드(rsAdSpend + rsRevenue)', hasNewRoas === 2);
+
+// 23. ROAS 수식 계산 + 신호등 렌더
+await page.fill('#rsAdSpend', '300000');
+await page.fill('#rsRevenue', '540000');
+await page.click('#rsGenerateBtn');
+await page.waitForTimeout(1500);
+const roasNum = await page.locator('#rsResult').textContent();
+mark('23. ROAS 결과에 1.8× 표시 + 신호등 + 처방', roasNum.includes('1.8') && (roasNum.includes('본전') || roasNum.includes('좋아요') || roasNum.includes('손해')), roasNum.slice(0, 80));
+
+// 24. ROAS 결과 → 기획안 [성과·검증] 버튼
+const roasPlanBtn = await page.locator('#rsResult button:has-text("기획안 [성과·검증]")').count();
+mark('24. ROAS 결과에 "기획안 [성과·검증]" 버튼', roasPlanBtn === 1);
+
+// 25. market-scanner — 복수 키워드 +버튼
+await page.goto(url + '#market-scanner');
+await page.waitForTimeout(400);
+const msAddBtn = await page.locator('#msAddKeywordBtn').count();
+mark('25. market-scanner 복수 키워드 "➕ 키워드 추가" 버튼', msAddBtn === 1);
+
+// 26. 키워드 추가 동작
+await page.click('#msAddKeywordBtn');
+await page.waitForTimeout(200);
+const kwInputs = await page.locator('#msKeywordList input').count();
+mark('26. +버튼 클릭 시 입력 칸 2개로 증가', kwInputs === 2);
+
+// 27. 세일즈 플래너(퍼펙트플래너) 새 리스트 입력
+await page.goto(url + '#sales-planner');
+await page.waitForTimeout(400);
+const spListCount = await page.locator('#spCustomersList, #spStrengthsList, #spOffersList').count();
+mark('27. sales-planner 3개 리스트 입력(고객/장점/혜택)', spListCount === 3);
+
+// 28. 세일즈 플래너 Mock 생성 → 상세페이지 탭
+await page.fill('#spProductName', '테스트 상품');
+await page.click('#spGenerateBtn');
+await page.waitForTimeout(1200);
+const detailTabVisible = await page.locator('#spTabDetail').count();
+mark('28. sales-planner 결과에 "상세페이지" 탭 렌더', detailTabVisible === 1);
+
+// 29. 세일즈 플래너 라이브 큐시트 탭 전환
+await page.click('#spTabLive');
+await page.waitForTimeout(300);
+const liveScriptText = await page.locator('#spTabContent').textContent();
+mark('29. 라이브 큐시트 탭에 5단계(오프닝/공감/시연/Q&A/마무리) 표시',
+  liveScriptText.includes('오프닝') && liveScriptText.includes('시연') && liveScriptText.includes('Q&A'),
+  liveScriptText.slice(0, 100));
+
+// 30. callGeminiAPI alias 버그 픽스 확인
+const aliasOk = await page.evaluate(() => typeof callGeminiAPI === 'function');
+mark('30. callGeminiAPI alias 정의됨', aliasOk);
+
 await browser.close();
 
 const failed = results.filter(r => !r.ok);

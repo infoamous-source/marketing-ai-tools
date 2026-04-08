@@ -446,6 +446,8 @@ function isAIEnabled() {
   return !!getApiKey();
 }
 
+// 하위 호환: 기존 도구들이 callGeminiAPI 이름으로 호출하고 있어서 alias 유지
+async function callGeminiAPI(prompt) { return callGemini(prompt); }
 async function callGemini(prompt) {
   const apiKey = getApiKey();
   if (!apiKey) return null;
@@ -1794,8 +1796,13 @@ function renderMarketScannerTool() {
         <h3 class="text-sm font-bold text-gray-900 mb-4">분석 정보 입력</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">키워드/업종 <span class="text-red-500">*</span></label>
-            <input id="msKeyword" type="text" placeholder="예: 수제 간식, 비건 화장품" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+              키워드 <span class="text-red-500">*</span>
+              <span class="ml-1.5 text-gray-400 font-normal">(최대 5개)</span>
+            </label>
+            <div id="msKeywordList" class="space-y-1.5"></div>
+            <button type="button" id="msAddKeywordBtn" class="mt-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium">➕ 키워드 추가하기 (5개까지)</button>
+            <p class="text-[11px] text-gray-500 mt-1">💡 팁: 구체적일수록 좋아요. '커피'는 너무 넓어요 → '사무실용 캡슐커피'</p>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
@@ -1825,23 +1832,60 @@ function renderMarketScannerTool() {
             </select>
           </div>
         </div>
-        <button id="msGenerateBtn" class="w-full mt-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">시장 분석 시작</button>
+        <button id="msGenerateBtn" class="w-full mt-6 py-3 bg-gray-900 hover:bg-black text-white rounded-xl text-sm font-bold transition">시장 분석 시작</button>
       </div>
       <div id="msResult"></div>
     </div>
   `;
 }
 
+// market-scanner 키워드 리스트 state + 렌더러
+let msKeywords = [''];
+function renderMsKeywordInputs() {
+  const list = document.getElementById('msKeywordList');
+  if (!list) return;
+  const BULLETS = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣'];
+  list.innerHTML = msKeywords.map((val, i) => `
+    <div class="flex items-center gap-1.5">
+      <span class="text-gray-400 text-xs w-5 shrink-0 text-center">${BULLETS[i]}</span>
+      <input type="text" data-idx="${i}" value="${String(val).replace(/"/g,'&quot;')}" placeholder="예: 유기농 캡슐커피" class="ms-kw-input flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      ${msKeywords.length > 1 ? `<button type="button" data-rm="${i}" class="ms-kw-rm w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 rounded">✕</button>` : ''}
+    </div>
+  `).join('');
+  list.querySelectorAll('.ms-kw-input').forEach(inp => {
+    inp.addEventListener('input', e => { msKeywords[Number(e.target.dataset.idx)] = e.target.value; });
+  });
+  list.querySelectorAll('.ms-kw-rm').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = Number(e.currentTarget.dataset.rm);
+      msKeywords.splice(idx, 1);
+      if (msKeywords.length === 0) msKeywords = [''];
+      renderMsKeywordInputs();
+    });
+  });
+  // Add 버튼 상태
+  const addBtn = document.getElementById('msAddKeywordBtn');
+  if (addBtn) addBtn.disabled = msKeywords.length >= 5;
+  if (addBtn) addBtn.style.opacity = msKeywords.length >= 5 ? '0.4' : '1';
+}
 function setupMarketScannerTool() {
+  msKeywords = [''];
+  renderMsKeywordInputs();
+  document.getElementById('msAddKeywordBtn').addEventListener('click', () => {
+    if (msKeywords.length >= 5) return;
+    msKeywords.push('');
+    renderMsKeywordInputs();
+  });
   document.getElementById('msGenerateBtn').addEventListener('click', handleMarketScannerGenerate);
 }
 
 async function handleMarketScannerGenerate() {
-  const keyword = document.getElementById('msKeyword').value.trim();
+  const cleanKeywords = msKeywords.map(k => k.trim()).filter(Boolean);
+  const keyword = cleanKeywords.join(' / ');
   const age = document.getElementById('msAge').value;
   const gender = document.getElementById('msGender').value;
   const type = document.getElementById('msType').value;
-  if (!keyword) { showToast('키워드/업종을 입력해주세요'); return; }
+  if (cleanKeywords.length === 0) { showToast('키워드를 1개 이상 입력해주세요'); return; }
 
   const ageMap = { all: '전체 연령', '10-20': '10~20대', '30-40': '30~40대', '50+': '50대 이상' };
   const genderMap = { all: '전체 성별', male: '남성', female: '여성' };
@@ -2160,30 +2204,48 @@ async function handleContentPlannerGenerate() {
   const imageStyle = document.getElementById('cpnImageStyle').value;
   if (!productName || !target) { showToast('상품명과 타겟 고객을 입력해주세요'); return; }
 
-  const toneMap = { spicy: '자극적이고 클릭을 유도하는', emotional: '감성적이고 공감을 이끄는', informative: '정보 전달 중심의 신뢰감 있는' };
+  // 깍두기 viralCardService의 TONE_GUIDE를 그대로 반영 (2026-04-08 포팅)
+  const TONE_GUIDE = {
+    spicy: { label: '🌶️ 자극형', hint: '반말/도발. "97%가 모르는", "아직도 이렇게 해?" 같은 충격적·호기심 자극형 카피.' },
+    emotional: { label: '💗 감성형', hint: '존댓말/따뜻함. "당신을 위해", "힘들었죠?" 같은 감정 연결형 카피.' },
+    informative: { label: '📊 정보형', hint: '존댓말/객관성. 숫자·통계·비교("78%", "3가지 기준") 중심의 신뢰형 카피.' },
+  };
   const styleMap = { photo: '사진 촬영풍', illustration: '일러스트', minimal: '미니멀 그래픽', retro: '레트로' };
   const resultEl = document.getElementById('cpnResult');
   resultEl.innerHTML = renderLoadingState(['콘텐츠 전략 분석 중...', '슬라이드 기획 중...', '이미지 프롬프트 생성 중...']);
 
-  const prompt = `당신은 한국의 SNS 바이럴 콘텐츠 전문가입니다. TOPIK 3급 수준의 쉬운 한국어로 작성하세요.
+  const prompt = `# 역할
+인스타그램 카드뉴스 100만 팔로워 바이럴 전문가예요. TOPIK 3급 수준의 쉬운 한국어로 작성하세요.
 
-상품/서비스: ${productName}
-타겟 고객: ${target}
-차별점: ${usp || '없음'}
-톤: ${toneMap[tone]}
-이미지 스타일: ${styleMap[imageStyle]}
+# 브리프
+- 상품/브랜드: ${productName}
+- 타겟 고객: ${target}
+- 차별점(USP): ${usp || '없음'}
+- 톤: ${TONE_GUIDE[tone].label} — ${TONE_GUIDE[tone].hint}
+- 이미지 스타일: ${styleMap[imageStyle]}
 
-인스타그램 카드뉴스 4장 슬라이드를 기획하세요. 각 슬라이드 역할: HOOK(주목) -> EMPATHY(공감) -> SOLUTION(해결) -> ACTION(행동유도)
+# 4장 공식
+1. HOOK (시선잡기) — 0.3초 안에 스크롤 멈추게, 충격 숫자·반전·질문
+2. EMPATHY (공감) — "이거 완전 내 얘기" 구체적 상황
+3. SOLUTION (해결) — USP를 1문장으로, 브랜드 노출
+4. ACTION (행동) — 지금 당장 구매/관심 유도, 브랜드 노출
 
-아래 JSON 형식으로만 응답하세요:
+# 응답 형식 (JSON만, 다른 텍스트 X)
 {
   "slides": [
-    { "role": "HOOK", "copyText": "카피 텍스트", "imagePrompt": "이미지 생성 프롬프트 (영문)", "colorScheme": "hex 2개 그라데이션 예: #FF6B6B, #4ECDC4", "designTip": "디자인 팁 한 줄" },
-    { "role": "EMPATHY", "copyText": "카피 텍스트", "imagePrompt": "이미지 생성 프롬프트", "colorScheme": "hex 2개", "designTip": "디자인 팁" },
-    { "role": "SOLUTION", "copyText": "카피 텍스트", "imagePrompt": "이미지 생성 프롬프트", "colorScheme": "hex 2개", "designTip": "디자인 팁" },
-    { "role": "ACTION", "copyText": "카피 텍스트", "imagePrompt": "이미지 생성 프롬프트", "colorScheme": "hex 2개", "designTip": "디자인 팁" }
+    { "role": "HOOK",     "copyText": "카피 (\\n 줄바꿈 허용)", "imagePrompt": "영문 이미지 프롬프트", "colorScheme": "#FF6B6B, #4ECDC4", "designTip": "디자인 팁 한 줄" },
+    { "role": "EMPATHY",  "copyText": "카피", "imagePrompt": "영문 프롬프트", "colorScheme": "hex 2개", "designTip": "팁" },
+    { "role": "SOLUTION", "copyText": "카피", "imagePrompt": "영문 프롬프트", "colorScheme": "hex 2개", "designTip": "팁" },
+    { "role": "ACTION",   "copyText": "카피", "imagePrompt": "영문 프롬프트", "colorScheme": "hex 2개", "designTip": "팁" }
   ]
-}`;
+}
+
+# 작성 규칙
+- copyText: ${tone === 'spicy' ? '반말' : '존댓말'}. 각 카드 2~3줄, 한 줄 10자 이내로 강렬하게
+- 카드 3·4는 반드시 "${productName}" 브랜드명을 포함
+- 4장이 하나의 스토리처럼 이어지게
+- 교과서적 표현 금지, 진짜 인스타 카피체로
+- imageStyle "${styleMap[imageStyle]}" 분위기 반영`;
 
   const raw = await callGeminiAPI(prompt);
   const data = raw ? safeParseJSON(raw) : null;
@@ -2254,37 +2316,73 @@ function renderContentPlannerResult(el, slides, isMock) {
   `;
 }
 
-// ==================== 13. SALES PLANNER TOOL ====================
+// ==================== 13. SALES PLANNER TOOL (퍼펙트플래너 — 2026-04-08 포팅) ====================
+// 깍두기 perfectPlannerService의 detailPage + liveScript 구조 전면 반영.
+// 리스트 입력(고객/강점/혜택) + 상세페이지 8섹션 + 30분 라이브 큐시트 5단계.
+
+// 작은 + 리스트 입력 헬퍼 (sales-planner 전용, 인라인 state)
+const spLists = { customers: [''], strengths: [''], offers: [''] };
+function renderSpListInputs(key, containerId, placeholder) {
+  const c = document.getElementById(containerId);
+  if (!c) return;
+  const BULLETS = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣'];
+  c.innerHTML = spLists[key].map((val, i) => `
+    <div class="flex items-center gap-1.5 mb-1.5">
+      <span class="text-gray-400 text-xs w-5 shrink-0 text-center">${BULLETS[i]}</span>
+      <input type="text" data-idx="${i}" value="${String(val).replace(/"/g,'&quot;')}" placeholder="${placeholder}" class="sp-${key}-input flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      ${spLists[key].length > 1 ? `<button type="button" data-rm="${i}" class="sp-${key}-rm w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 rounded">✕</button>` : ''}
+    </div>
+  `).join('');
+  c.querySelectorAll(`.sp-${key}-input`).forEach(inp => {
+    inp.addEventListener('input', e => { spLists[key][Number(e.target.dataset.idx)] = e.target.value; });
+  });
+  c.querySelectorAll(`.sp-${key}-rm`).forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = Number(e.currentTarget.dataset.rm);
+      spLists[key].splice(idx, 1);
+      if (spLists[key].length === 0) spLists[key] = [''];
+      renderSpListInputs(key, containerId, placeholder);
+    });
+  });
+}
+
 function renderSalesPlannerTool() {
   return `
     <div class="gradient-tool-header text-white py-10 px-4">
       <div class="max-w-3xl mx-auto">
-        <h2 class="text-xl font-bold">세일즈 전략 AI</h2>
-        <p class="text-sm text-gray-300 mt-1">상세페이지와 라이브커머스 대본을 자동 생성합니다</p>
+        <h2 class="text-xl font-bold">퍼펙트플래너 (상세페이지 + 라이브 대본)</h2>
+        <p class="text-sm text-gray-300 mt-1">쿠팡·네이버 스마트스토어 상세페이지 + 30분 라이브커머스 큐시트 자동 생성</p>
       </div>
     </div>
-    <div class="max-w-3xl mx-auto px-4 py-6 space-y-4">
-      <div class="bg-white rounded-2xl border border-gray-200 p-6">
+    <div class="max-w-lg mx-auto px-4 py-6 space-y-4">
+      <div class="bg-white rounded-2xl border border-gray-200 p-5">
         <h3 class="text-sm font-bold text-gray-900 mb-4">상품 정보 입력</h3>
-        <div class="space-y-4">
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">상품명 <span class="text-red-500">*</span></label>
-            <input id="spProductName" type="text" placeholder="예: 수제 그래놀라" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">핵심 타겟 <span class="text-red-500">*</span></label>
-            <input id="spTarget" type="text" placeholder="예: 건강에 관심 많은 30대 직장인" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">차별점 (USP)</label>
-            <input id="spUSP" type="text" placeholder="예: 유기농 원재료, 수제 생산" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">강력한 혜택</label>
-            <input id="spBenefit" type="text" placeholder="예: 첫 구매 30% 할인, 무료 배송" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          </div>
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-700 mb-1.5">상품/브랜드명 <span class="text-red-500">*</span></label>
+          <input id="spProductName" type="text" placeholder="예: 우리집 캡슐커피" class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
-        <button id="spGenerateBtn" class="w-full mt-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">세일즈 전략 생성</button>
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-700 mb-1.5">주요 고객은 누구예요? <span class="text-gray-400 font-normal">(여러 명 가능)</span></label>
+          <div id="spCustomersList"></div>
+          <button type="button" id="spAddCustomerBtn" class="text-xs text-blue-600 hover:text-blue-700 font-medium">➕ 고객 추가 (5명까지)</button>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-700 mb-1.5">다른 곳에 없는 장점 <span class="text-gray-400 font-normal">(여러 개 가능)</span></label>
+          <div id="spStrengthsList"></div>
+          <button type="button" id="spAddStrengthBtn" class="text-xs text-blue-600 hover:text-blue-700 font-medium">➕ 장점 추가 (5개까지)</button>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-700 mb-1.5">오늘의 특별 혜택 <span class="text-gray-400 font-normal">(여러 개 가능)</span></label>
+          <div id="spOffersList"></div>
+          <button type="button" id="spAddOfferBtn" class="text-xs text-blue-600 hover:text-blue-700 font-medium">➕ 혜택 추가 (5개까지)</button>
+          <p class="text-[11px] text-gray-500 mt-1">💡 예: "30% 할인", "무료배송", "2+1 행사"</p>
+        </div>
+
+        <button id="spGenerateBtn" class="w-full mt-4 py-3 bg-gray-900 hover:bg-black text-white rounded-xl text-sm font-bold transition">✨ 상세페이지 + 라이브 대본 만들기</button>
       </div>
       <div id="spResult"></div>
     </div>
@@ -2292,221 +2390,327 @@ function renderSalesPlannerTool() {
 }
 
 function setupSalesPlannerTool() {
+  spLists.customers = [''];
+  spLists.strengths = [''];
+  spLists.offers = [''];
+  renderSpListInputs('customers', 'spCustomersList', '예: 30대 직장인');
+  renderSpListInputs('strengths', 'spStrengthsList', '예: 3분 만에 카페 맛');
+  renderSpListInputs('offers', 'spOffersList', '예: 오늘만 30% 할인');
+  document.getElementById('spAddCustomerBtn').addEventListener('click', () => { if (spLists.customers.length < 5) { spLists.customers.push(''); renderSpListInputs('customers', 'spCustomersList', '예: 30대 직장인'); } });
+  document.getElementById('spAddStrengthBtn').addEventListener('click', () => { if (spLists.strengths.length < 5) { spLists.strengths.push(''); renderSpListInputs('strengths', 'spStrengthsList', '예: 3분 만에 카페 맛'); } });
+  document.getElementById('spAddOfferBtn').addEventListener('click', () => { if (spLists.offers.length < 5) { spLists.offers.push(''); renderSpListInputs('offers', 'spOffersList', '예: 오늘만 30% 할인'); } });
   document.getElementById('spGenerateBtn').addEventListener('click', handleSalesPlannerGenerate);
 }
 
 async function handleSalesPlannerGenerate() {
   const productName = document.getElementById('spProductName').value.trim();
-  const target = document.getElementById('spTarget').value.trim();
-  const usp = document.getElementById('spUSP').value.trim();
-  const benefit = document.getElementById('spBenefit').value.trim();
-  if (!productName || !target) { showToast('상품명과 핵심 타겟을 입력해주세요'); return; }
+  const customersList = spLists.customers.map(s => s.trim()).filter(Boolean);
+  const strengthsList = spLists.strengths.map(s => s.trim()).filter(Boolean);
+  const offersList = spLists.offers.map(s => s.trim()).filter(Boolean);
+  if (!productName) { showToast('상품/브랜드명을 입력해주세요'); return; }
 
   const resultEl = document.getElementById('spResult');
-  resultEl.innerHTML = renderLoadingState(['상품 분석 중...', '상세페이지 구성 중...', '라이브커머스 대본 생성 중...']);
+  resultEl.innerHTML = renderLoadingState(['상품 브리핑 분석 중...', '상세페이지 구성 중...', '라이브 큐시트 생성 중...']);
 
-  const prompt = `당신은 한국의 세일즈 전략 전문가입니다. TOPIK 3급 수준의 쉬운 한국어로 작성하세요.
+  const customers = customersList.join(', ') || '일반 소비자';
+  const strengths = strengthsList.join(', ') || '좋은 품질';
+  const offers = offersList.join(', ') || '특별 할인';
 
-상품명: ${productName}
-핵심 타겟: ${target}
-차별점: ${usp || '없음'}
-혜택: ${benefit || '없음'}
+  const prompt = `# 역할
+한국 쿠팡·네이버 스마트스토어·카카오 라이브커머스 전문 기획자예요.
+상세페이지는 스크롤을 멈추게 하고, 라이브 대본은 시청자가 "지금 안 사면 손해"라고 느끼게 만들어요.
+외국인 학생(TOPIK 3급)도 읽을 수 있는 쉬운 한국어로 작성해요.
 
-상세페이지와 라이브커머스 전략을 아래 JSON 형식으로만 응답하세요:
+# 상품 정보
+- 상품/브랜드: ${productName}
+- 주요 고객: ${customers}
+- 다른 곳에 없는 장점: ${strengths}
+- 오늘의 특별 혜택: ${offers}
+
+# 어그로 한 줄 규칙 (매번 다르게)
+attentionLine.type은 "B" 또는 "C" 중 랜덤으로 선택하세요.
+- B형 (어그로형): "✋ 스크롤 내리기 전에\\n이것만 보고 가세요" 같은 호기심 자극 한 줄
+- C형 (사회적 증거형): "이미 2,341명이 선택한 이유 ↓" 같은 숫자/증거 한 줄
+
+# 응답 형식 (JSON만, 다른 텍스트 X)
 {
-  "landing": {
-    "headline": "메인 헤드라인",
-    "subheadline": "서브 헤드라인",
-    "painPoints": ["고객 고민1", "고객 고민2", "고객 고민3"],
-    "features": ["특징/장점1", "특징/장점2", "특징/장점3"],
-    "trustSignals": ["신뢰 요소1", "신뢰 요소2", "신뢰 요소3"],
-    "closingCTA": "마지막 행동 유도 문구",
-    "checklist": ["체크리스트1", "체크리스트2", "체크리스트3"]
+  "detailPage": {
+    "productTitle": "[오늘만 30% 특가] 상품명 / 장점1 / 장점2 형태의 긴 상품명",
+    "brandLine": "브랜드명 + '공식' 또는 '스토어'",
+    "originalPrice": 정가(숫자),
+    "salePrice": 할인가(숫자),
+    "discountPercent": 할인율(숫자),
+    "rating": 4.8,
+    "reviewCount": 2000~5000 사이 숫자,
+    "countdownLabel": "⏰ 오늘 자정 종료까지",
+    "attentionLine": { "type": "B 또는 C", "text": "한 줄 카피 (\\n 1개 허용)" },
+    "headlinePrefix": "잠깐, 혹시 같은 짧은 prefix",
+    "headline": "스크롤을 멈추게 하는 구체적 한 줄 카피 (\\n 허용, 최대 3줄)",
+    "headlineHighlight": "headline 중 강조할 단어",
+    "painPointsTitle": "😩 혹시 이런 분\\n아니세요?",
+    "painPoints": [
+      { "emoji": "☕", "text": "~한 사람! 형태의 불만 1" },
+      { "emoji": "🤢", "text": "~한 사람! 형태의 불만 2" },
+      { "emoji": "💸", "text": "~한 사람! 형태의 불만 3" }
+    ],
+    "solutionHeadline": "해결 헤드라인 (\\n 1개 허용)",
+    "features": [
+      { "emoji": "⏰", "title": "짧은 제목", "description": "짧은 설명" },
+      { "emoji": "💰", "title": "짧은 제목", "description": "짧은 설명" },
+      { "emoji": "🌱", "title": "짧은 제목", "description": "짧은 설명" }
+    ],
+    "reviews": [
+      { "stars": "★★★★★", "text": "생생한 후기 한 줄", "author": "김** · 30대 직장인" },
+      { "stars": "★★★★★", "text": "생생한 후기 한 줄", "author": "박** · 캡슐 매니아" }
+    ],
+    "finalCtaHeadline": "놓치면\\n정가 그대로",
+    "stickyCtaText": "할인가 · 구매하기"
   },
-  "live": {
-    "opening": "오프닝 멘트 (처음 30초)",
-    "demoPoints": [
-      { "timestamp": "00:30", "script": "시연 포인트1" },
-      { "timestamp": "03:00", "script": "시연 포인트2" },
-      { "timestamp": "07:00", "script": "시연 포인트3" },
-      { "timestamp": "10:00", "script": "시연 포인트4" }
-    ],
-    "qnaHandling": [
-      { "question": "예상 질문1", "answer": "답변1" },
-      { "question": "예상 질문2", "answer": "답변2" },
-      { "question": "예상 질문3", "answer": "답변3" }
-    ],
-    "closing": "마무리 멘트",
-    "checklist": ["준비사항1", "준비사항2", "준비사항3"]
+  "liveScript": {
+    "title": "${productName} · 30분 라이브 큐시트",
+    "expectedViewers": "예상 시청 500~800",
+    "items": [
+      { "timeRange": "0:00 ~ 2:00",   "title": "오프닝",        "duration": "2분", "hostScript": "진행자 멘트 (에너지 넘치게)", "action": "📌 카메라에 미소, 상품 한 손에 보여주기" },
+      { "timeRange": "2:00 ~ 6:00",   "title": "공감 들어가기",  "duration": "4분", "hostScript": "고객 불만에 공감하는 멘트",       "action": "📌 한숨 쉬는 표정, 제스처" },
+      { "timeRange": "6:00 ~ 14:00",  "title": "진짜 시연",      "duration": "8분", "hostScript": "실제 시연 멘트",                  "action": "📌 실제 상품 시연 동작" },
+      { "timeRange": "14:00 ~ 22:00", "title": "Q&A",           "duration": "8분", "hostScript": "예상 질문 1 + 답변\\n예상 질문 2 + 답변", "action": "📌 채팅창 보며 답변" },
+      { "timeRange": "22:00 ~ 30:00", "title": "마무리·주문 유도","duration": "8분", "hostScript": "마지막 결정타. 오늘 이 가격 오늘만이에요!", "action": "📌 큰 손가락으로 화면 아래 주문 버튼 가리키기" }
+    ]
   }
-}`;
+}
+
+# 작성 규칙
+- 모든 텍스트 TOPIK 3급 쉬운 한국어 ~해요 체
+- painPoints는 반드시 "~한 사람!" 형태 (마지막에 느낌표)
+- headline은 구어체, 캐주얼
+- reviews는 실감나는 구체적 상황
+- 모든 \\n은 실제 줄바꿈 1개를 의미
+- "${productName}"을 결과 곳곳에 자연스럽게 녹이세요
+- 가격은 offers("${offers}")에서 추론하거나 합리적으로 설정`;
 
   const raw = await callGeminiAPI(prompt);
   const data = raw ? safeParseJSON(raw) : null;
 
-  if (data && data.landing && data.live) {
-    renderSalesPlannerResult(resultEl, data, false);
+  if (data?.detailPage && data?.liveScript) {
+    renderSalesPlannerResult(resultEl, data, { productName, offers: offersList }, false);
   } else {
-    const mock = {
-      landing: {
-        headline: `${target}을 위한 ${productName}`,
-        subheadline: usp || '다른 것과는 확실히 다릅니다',
-        painPoints: ['원하는 품질의 제품을 찾기 어려움', '기존 제품에 대한 불만', '가격 대비 만족도가 낮음'],
-        features: ['엄선된 원재료 사용', '전문가의 노하우가 담긴 제조 과정', '고객 후기로 검증된 만족도'],
-        trustSignals: ['구매 고객 후기 500건+', '전문가 추천 제품', '100% 만족 보장 환불 정책'],
-        closingCTA: benefit ? `${benefit} - 지금 바로 주문하세요!` : '지금 주문하면 특별 혜택을 드립니다!',
-        checklist: ['메인 상품 사진 5장 이상 준비', '상세 성분/스펙 표 작성', '고객 후기 스크린샷 확보']
-      },
-      live: {
-        opening: `안녕하세요! 오늘 정말 특별한 제품을 가져왔어요. ${target}이라면 꼭 필요한 ${productName}입니다. 끝까지 보시면 특별 할인이 있으니 놓치지 마세요!`,
-        demoPoints: [
-          { timestamp: '00:30', script: '제품 패키지를 보여주며 첫인상 소개' },
-          { timestamp: '03:00', script: '실제 사용 시연 - 사용법과 효과를 직접 보여줌' },
-          { timestamp: '07:00', script: '경쟁 제품과의 차이점을 비교 시연' },
-          { timestamp: '10:00', script: '한정 혜택 안내 및 구매 독려' }
-        ],
-        qnaHandling: [
-          { question: '배송은 얼마나 걸리나요?', answer: '주문 후 1~2일 내 출발하며, 평균 2~3일이면 받으실 수 있습니다!' },
-          { question: '환불이 가능한가요?', answer: '네! 수령 후 7일 이내 100% 환불 가능합니다. 안심하고 주문하세요!' },
-          { question: '다른 제품과 뭐가 다른가요?', answer: `${usp || '저희만의 특별한 제조 공정과 엄선된 원재료가 차이를 만듭니다!'}` }
-        ],
-        closing: `오늘 보여드린 ${productName}, 정말 좋죠? ${benefit ? benefit + ' 혜택은 ' : '이 특별한 가격은 '}오늘 방송 중에만 가능합니다! 지금 바로 구매 버튼을 눌러주세요!`,
-        checklist: ['조명 및 카메라 세팅 확인', '제품 샘플 및 시연 도구 준비', '할인 쿠폰 코드 준비']
-      }
-    };
-    renderSalesPlannerResult(resultEl, mock, true);
+    renderSalesPlannerResult(resultEl, getMockSalesPlan(productName, offersList), { productName, offers: offersList }, true);
   }
 }
 
-function renderSalesPlannerResult(el, data, isMock) {
+function getMockSalesPlan(productName, offersList) {
+  const offer = offersList[0] || '30% 할인';
+  const discountMatch = offer.match(/(\d+)\s*%/);
+  const discountPercent = discountMatch ? Number(discountMatch[1]) : 30;
+  const originalPrice = 30000;
+  const salePrice = Math.round((originalPrice * (100 - discountPercent)) / 100);
+  const attentionPool = [
+    { type: 'B', text: '✋ 스크롤 내리기 전에\n이것만 보고 가세요' },
+    { type: 'B', text: '🙈 지금 안 보면\n후회할지도 몰라요' },
+    { type: 'C', text: '이미 2,341명이 선택한 이유 ↓' },
+    { type: 'C', text: '만족도 98%, 재구매율 67% 🔥' },
+  ];
+  return {
+    detailPage: {
+      productTitle: `[오늘만 ${discountPercent}% 특가] ${productName} / 카페 수준 / 3분 추출`,
+      brandLine: `${productName} 공식`,
+      originalPrice, salePrice, discountPercent,
+      rating: 4.8, reviewCount: 2341,
+      countdownLabel: '⏰ 오늘 자정 종료까지',
+      attentionLine: attentionPool[Math.floor(Math.random() * attentionPool.length)],
+      headlinePrefix: '잠깐, 혹시',
+      headline: '3분이면\n카페가\n우리집?! ☕',
+      headlineHighlight: '우리집?!',
+      painPointsTitle: '😩 혹시 이런 분\n아니세요?',
+      painPoints: [
+        { emoji: '☕', text: '출근 전 카페에서\n줄 서는 게 지치는 사람!' },
+        { emoji: '🤢', text: '인스턴트 커피는\n맛이 없는 사람!' },
+        { emoji: '💸', text: '캡슐 한 알에 천원,\n비싸다고 느끼는 사람!' },
+      ],
+      solutionHeadline: '캡슐 한 알이면\n카페가 부엌에',
+      features: [
+        { emoji: '⏰', title: '단 3분',    description: '물 붓고 기다리면 끝!\n카페 줄 안 서도 돼요' },
+        { emoji: '💰', title: '한 알 500원', description: '네스프레소의 절반 가격\n매일 마셔도 부담 X' },
+        { emoji: '🌱', title: '100% 친환경', description: '분해되는 캡슐\n죄책감 0' },
+      ],
+      reviews: [
+        { stars: '★★★★★', text: '"진짜 서울 카페 맛이에요. 출근길이 행복해졌어요."', author: '김** · 30대 직장인' },
+        { stars: '★★★★★', text: '"네스프레소 쓰다가 갈아탔는데 맛이 더 좋네요?!"', author: '박** · 캡슐 매니아' },
+      ],
+      finalCtaHeadline: `놓치면\n${originalPrice.toLocaleString()}원 그대로`,
+      stickyCtaText: `${salePrice.toLocaleString()}원 · 구매하기`,
+    },
+    liveScript: {
+      title: `${productName} · 30분 라이브 큐시트`,
+      expectedViewers: '예상 시청 600+',
+      items: [
+        { timeRange: '0:00 ~ 2:00',   title: '오프닝',          duration: '2분', hostScript: '"안녕하세요! 오늘 깜짝 선물 들고 왔어요. 끝까지 보시면 후회 안 하실 거예요!"', action: `📌 카메라에 미소, ${productName} 한 알 손에 들고 보여주기` },
+        { timeRange: '2:00 ~ 6:00',   title: '공감 들어가기',    duration: '4분', hostScript: '"여러분, 혹시 아침마다 카페 줄 서느라 힘드신 분~? 댓글로 \'저요\' 한 번 적어주세요!"', action: '📌 한숨 쉬는 표정, 손목시계 보는 제스처' },
+        { timeRange: '6:00 ~ 14:00',  title: '진짜 시연 (3분 추출)', duration: '8분', hostScript: '"지금부터 진짜 3분만에 만들어볼게요. 시간 같이 재봐요!"', action: '📌 캡슐 넣기 → 물 붓기 → 타이머 시작' },
+        { timeRange: '14:00 ~ 22:00', title: 'Q&A',             duration: '8분', hostScript: 'Q: "맛이 진짜 카페 같아요?"\nA: "네! 원두를 직접 갈아서 담았어요."', action: '📌 채팅창 보며 답변' },
+        { timeRange: '22:00 ~ 30:00', title: '마무리·주문 유도', duration: '8분', hostScript: `"여러분, 이거 진짜 오늘만이에요. ${discountPercent}% 할인은 자정에 끝나요. 지금 바로 주문 버튼 눌러주세요!"`, action: '📌 큰 손가락으로 화면 아래 주문 버튼 가리키기' },
+      ],
+    },
+  };
+}
+
+function renderSalesPlannerResult(el, data, ctx, isMock) {
+  window._salesPlannerData = data;
   el.innerHTML = `
     <div class="fade-in space-y-4">
       ${isMock ? renderMockBanner() : ''}
       <div class="flex gap-2 bg-gray-100 rounded-xl p-1">
-        <button id="spTabLanding" onclick="switchSalesTab('landing')" class="flex-1 py-2 text-xs font-bold rounded-lg bg-white text-gray-900 shadow-sm transition">상세페이지</button>
-        <button id="spTabLive" onclick="switchSalesTab('live')" class="flex-1 py-2 text-xs font-bold rounded-lg text-gray-500 transition">라이브커머스</button>
+        <button id="spTabDetail" onclick="switchSalesTab('detail')" class="flex-1 py-2 text-xs font-bold rounded-lg bg-white text-gray-900 shadow-sm transition">🛒 상세페이지</button>
+        <button id="spTabLive" onclick="switchSalesTab('live')" class="flex-1 py-2 text-xs font-bold rounded-lg text-gray-500 transition">🎬 라이브 큐시트</button>
       </div>
-      <div id="spTabContent">
-        ${renderSalesLandingTab(data.landing)}
-      </div>
+      <div id="spTabContent">${renderSalesDetailTab(data.detailPage)}</div>
     </div>
   `;
-  window._salesPlannerData = data;
 }
 
 function switchSalesTab(tab) {
   const data = window._salesPlannerData;
-  const landingBtn = document.getElementById('spTabLanding');
+  const detailBtn = document.getElementById('spTabDetail');
   const liveBtn = document.getElementById('spTabLive');
   const content = document.getElementById('spTabContent');
-  if (tab === 'landing') {
-    landingBtn.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-white text-gray-900 shadow-sm transition';
+  if (tab === 'detail') {
+    detailBtn.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-white text-gray-900 shadow-sm transition';
     liveBtn.className = 'flex-1 py-2 text-xs font-bold rounded-lg text-gray-500 transition';
-    content.innerHTML = renderSalesLandingTab(data.landing);
+    content.innerHTML = renderSalesDetailTab(data.detailPage);
   } else {
-    landingBtn.className = 'flex-1 py-2 text-xs font-bold rounded-lg text-gray-500 transition';
+    detailBtn.className = 'flex-1 py-2 text-xs font-bold rounded-lg text-gray-500 transition';
     liveBtn.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-white text-gray-900 shadow-sm transition';
-    content.innerHTML = renderSalesLiveTab(data.live);
+    content.innerHTML = renderSalesLiveTab(data.liveScript);
   }
 }
 
-function renderSalesLandingTab(d) {
+function renderSalesDetailTab(d) {
+  const toBr = s => String(s || '').replace(/\n/g, '<br>');
+  const planText = `[실행 계획 — 상세페이지]\n${d.productTitle}\n가격: ${d.originalPrice?.toLocaleString()}원 → ${d.salePrice?.toLocaleString()}원 (${d.discountPercent}% 할인)\n헤드라인: ${String(d.headline).replace(/\n/g,' ')}\n해결: ${String(d.solutionHeadline).replace(/\n/g,' ')}\n특징: ${(d.features||[]).map(f => `${f.title}(${f.description})`).join(' / ')}`;
   return `
     <div class="space-y-4 fade-in">
+      <button onclick='sendToPlan(5, ${planArg(planText)}, "append")' class="w-full px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [실행 계획] 칸에 상세페이지 추가</button>
+
+      <!-- 상품 제목/브랜드/가격 -->
       <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">🎯 헤드라인</h4>
-        <div class="bg-gray-900 text-white rounded-xl p-4 text-center mb-2">
-          <p class="text-lg font-bold">${d.headline}</p>
-          <p class="text-sm text-gray-300 mt-1">${d.subheadline}</p>
+        <p class="text-[10px] text-gray-500 font-bold">${d.brandLine || ''}</p>
+        <h4 class="text-sm font-bold text-gray-900 mt-1 mb-3">${d.productTitle || ''}</h4>
+        <div class="flex items-baseline gap-2">
+          <span class="text-red-600 text-lg font-black">${d.discountPercent || 0}%</span>
+          <span class="text-gray-400 line-through text-sm">${(d.originalPrice || 0).toLocaleString()}원</span>
+          <span class="text-gray-900 text-2xl font-black">${(d.salePrice || 0).toLocaleString()}원</span>
         </div>
+        <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+          <span>⭐ ${d.rating || 4.8}</span>
+          <span>· 후기 ${(d.reviewCount || 0).toLocaleString()}건</span>
+        </div>
+        ${d.countdownLabel ? `<div class="mt-3 bg-red-50 border border-red-200 rounded-lg p-2 text-center"><span class="text-xs text-red-700 font-bold">${d.countdownLabel}</span></div>` : ''}
       </div>
+
+      <!-- 어그로 한 줄 -->
+      ${d.attentionLine ? `
+      <div class="bg-gradient-to-br from-amber-50 to-amber-100 border-2 border-amber-400 rounded-2xl p-5 text-center">
+        <p class="text-base font-black text-amber-900 whitespace-pre-line leading-tight">${toBr(d.attentionLine.text)}</p>
+        <p class="text-[10px] text-amber-600 mt-2">${d.attentionLine.type === 'B' ? '어그로형' : '사회적 증거형'}</p>
+      </div>` : ''}
+
+      <!-- 헤드라인 -->
+      <div class="bg-gray-900 text-white rounded-2xl p-6 text-center">
+        ${d.headlinePrefix ? `<p class="text-xs text-gray-400 mb-2">${d.headlinePrefix}</p>` : ''}
+        <p class="text-xl font-black leading-tight whitespace-pre-line">${toBr(d.headline || '')}</p>
+      </div>
+
+      <!-- 페인 포인트 -->
       <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">😤 고객 고민 (Pain Points)</h4>
+        <p class="text-sm font-bold text-gray-900 mb-3 whitespace-pre-line">${toBr(d.painPointsTitle || '')}</p>
         <div class="space-y-2">
-          ${d.painPoints.map(p => `<div class="flex items-center gap-2 bg-red-50 rounded-lg p-3"><span class="text-red-500">✗</span><p class="text-xs text-red-800">${p}</p></div>`).join('')}
+          ${(d.painPoints || []).map(p => `<div class="flex items-start gap-3 bg-red-50 rounded-lg p-3"><span class="text-xl flex-shrink-0">${p.emoji}</span><p class="text-xs text-red-900 whitespace-pre-line leading-relaxed">${toBr(p.text)}</p></div>`).join('')}
         </div>
       </div>
+
+      <!-- 솔루션 헤드라인 -->
+      ${d.solutionHeadline ? `
+      <div class="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-5 text-center">
+        <p class="text-[11px] text-emerald-600 font-bold mb-2">그래서 만들었어요</p>
+        <p class="text-lg font-black text-emerald-900 whitespace-pre-line leading-tight">${toBr(d.solutionHeadline)}</p>
+      </div>` : ''}
+
+      <!-- 3가지 약속 -->
       <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">✨ 특징 & 장점</h4>
+        <p class="text-sm font-bold text-gray-900 mb-3">✅ 3가지 약속</p>
         <div class="space-y-2">
-          ${d.features.map(f => `<div class="flex items-center gap-2 bg-green-50 rounded-lg p-3"><span class="text-green-500">✓</span><p class="text-xs text-green-800">${f}</p></div>`).join('')}
+          ${(d.features || []).map(f => `
+            <div class="flex gap-3 items-start bg-gray-50 rounded-lg p-3">
+              <span class="text-2xl">${f.emoji}</span>
+              <div class="flex-1">
+                <p class="text-sm font-bold text-gray-900">${f.title}</p>
+                <p class="text-xs text-gray-600 whitespace-pre-line mt-0.5">${toBr(f.description)}</p>
+              </div>
+            </div>
+          `).join('')}
         </div>
       </div>
+
+      <!-- 후기 -->
       <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">🛡️ 신뢰 요소</h4>
+        <p class="text-sm font-bold text-gray-900 mb-3">💬 생생 후기</p>
         <div class="space-y-2">
-          ${d.trustSignals.map(t => `<div class="flex items-center gap-2 bg-blue-50 rounded-lg p-3"><span class="text-blue-500">★</span><p class="text-xs text-blue-800">${t}</p></div>`).join('')}
+          ${(d.reviews || []).map(r => `
+            <div class="border border-gray-100 rounded-xl p-3">
+              <p class="text-amber-500 text-xs">${r.stars}</p>
+              <p class="text-xs text-gray-800 mt-1">${r.text}</p>
+              <p class="text-[10px] text-gray-400 mt-1">— ${r.author}</p>
+            </div>
+          `).join('')}
         </div>
       </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">🔥 클로징 CTA</h4>
-        <div class="bg-blue-600 text-white rounded-xl p-4 text-center">
-          <p class="text-sm font-bold">${d.closingCTA}</p>
-        </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">📋 제작 체크리스트</h4>
-        <div class="space-y-2">
-          ${d.checklist.map(c => `<label class="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" class="rounded text-blue-600">${c}</label>`).join('')}
-        </div>
-      </div>
+
+      <!-- 최종 CTA -->
+      ${d.finalCtaHeadline ? `
+      <div class="bg-red-600 text-white rounded-2xl p-6 text-center">
+        <p class="text-lg font-black whitespace-pre-line leading-tight">${toBr(d.finalCtaHeadline)}</p>
+        ${d.stickyCtaText ? `<div class="mt-4 bg-white text-red-600 rounded-xl py-3 font-black text-base">${d.stickyCtaText}</div>` : ''}
+      </div>` : ''}
     </div>
   `;
 }
 
 function renderSalesLiveTab(d) {
+  const COLORS = ['orange', 'amber', 'green', 'blue', 'red'];
+  const planText = `[실행 계획 — 30분 라이브 큐시트]\n${d.title || ''}\n${(d.items || []).map((it, i) => `${i+1}. ${it.timeRange} ${it.title} (${it.duration})`).join('\n')}`;
   return `
     <div class="space-y-4 fade-in">
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <div class="flex items-center justify-between mb-3">
-          <h4 class="text-sm font-bold text-gray-900">🎬 오프닝 멘트</h4>
-          ${renderCopyBtn(d.opening, '복사')}
-        </div>
-        <div class="bg-purple-50 rounded-xl p-4">
-          <p class="text-sm text-purple-900 leading-relaxed">${d.opening}</p>
-        </div>
+      <button onclick='sendToPlan(5, ${planArg(planText)}, "append")' class="w-full px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [실행 계획] 칸에 라이브 큐시트 추가</button>
+
+      <div class="bg-white rounded-2xl border border-gray-200 p-5 text-center">
+        <p class="text-[10px] text-gray-500 font-bold tracking-wider">━━━ 30분 라이브 큐시트 ━━━</p>
+        <p class="text-base font-bold text-gray-900 mt-1">${d.title || ''}</p>
+        <p class="text-xs text-gray-500 mt-1">${d.expectedViewers || ''}</p>
       </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">📍 시연 포인트 (타임라인)</h4>
-        <div class="space-y-3">
-          ${d.demoPoints.map((dp, i) => `
-            <div class="flex gap-3 items-start">
-              <div class="flex-shrink-0 w-16 text-center">
-                <span class="inline-block px-2 py-1 bg-gray-900 text-white text-xs font-mono rounded-lg">${dp.timestamp}</span>
-              </div>
-              <div class="flex-1 bg-gray-50 rounded-lg p-3">
-                <p class="text-xs text-gray-700">${dp.script}</p>
-              </div>
+
+      ${(d.items || []).map((it, i) => {
+        const color = COLORS[i] || 'gray';
+        return `
+        <div class="bg-white rounded-2xl border-2 border-${color}-200 overflow-hidden">
+          <div class="bg-${color}-50 px-4 py-3 flex items-center justify-between border-b border-${color}-100">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold text-${color}-700 bg-white px-2 py-0.5 rounded">${it.timeRange}</span>
+              <span class="text-sm font-bold text-${color}-900">${it.title}</span>
             </div>
-          `).join('')}
-        </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">❓ 예상 Q&A</h4>
-        <div class="space-y-3">
-          ${d.qnaHandling.map(q => `
-            <div class="border border-gray-100 rounded-xl p-3 space-y-2">
-              <div class="flex items-start gap-2"><span class="text-xs font-bold text-blue-600 flex-shrink-0">Q.</span><p class="text-xs text-gray-900 font-medium">${q.question}</p></div>
-              <div class="flex items-start gap-2"><span class="text-xs font-bold text-green-600 flex-shrink-0">A.</span><p class="text-xs text-gray-700">${q.answer}</p></div>
+            <span class="text-[11px] text-${color}-600 font-medium">${it.duration}</span>
+          </div>
+          <div class="p-4 space-y-2">
+            <div class="bg-gray-50 rounded-lg p-3">
+              <p class="text-[10px] text-gray-500 font-bold mb-1">🎤 진행자 멘트</p>
+              <p class="text-xs text-gray-800 whitespace-pre-line leading-relaxed">${String(it.hostScript || '').replace(/\n/g, '<br>')}</p>
             </div>
-          `).join('')}
+            ${it.action ? `<p class="text-[11px] text-gray-600">${it.action}</p>` : ''}
+            ${it.audienceReaction ? `<p class="text-[11px] text-purple-600">${it.audienceReaction}</p>` : ''}
+            ${it.extra ? `<p class="text-[11px] text-amber-700 font-medium">${it.extra}</p>` : ''}
+          </div>
         </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <div class="flex items-center justify-between mb-3">
-          <h4 class="text-sm font-bold text-gray-900">🎤 클로징 멘트</h4>
-          ${renderCopyBtn(d.closing, '복사')}
-        </div>
-        <div class="bg-amber-50 rounded-xl p-4">
-          <p class="text-sm text-amber-900 leading-relaxed">${d.closing}</p>
-        </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">📋 준비 체크리스트</h4>
-        <div class="space-y-2">
-          ${d.checklist.map(c => `<label class="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" class="rounded text-blue-600">${c}</label>`).join('')}
-        </div>
-      </div>
+        `;
+      }).join('')}
     </div>
   `;
 }
@@ -2519,58 +2723,65 @@ const channelBenchmarks = {
   youtube: { name: '유튜브', ctrMin: 0.3, ctrMax: 1.0, cvrMin: 0.5, cvrMax: 2.0, cpcMin: 300, cpcMax: 800 }
 };
 
+// ROAS 시뮬레이터 — 깍두기 mockup 확정안 (2026-04-07 포팅)
+// 입력 2개(광고비·매출) + 광고채널 → 수식 계산 + 신호등 + 경량 AI 한 줄 처방
+const ROAS_CHANNELS = {
+  instagram: '📷 인스타그램',
+  naver: '🔍 네이버',
+  kakao: '💬 카카오톡',
+  youtube: '▶️ 유튜브',
+};
+function calculateRoas(adSpend, revenue) {
+  const roas = adSpend > 0 ? Number((revenue / adSpend).toFixed(1)) : 0;
+  const profit = revenue - adSpend;
+  let status;
+  if (roas < 1.5) status = 'loss';
+  else if (roas <= 2.5) status = 'breakeven';
+  else status = 'profit';
+  return { roas, profit, status };
+}
+
 function renderRoasSimulatorTool() {
   return `
     <div class="gradient-tool-header text-white py-10 px-4">
       <div class="max-w-3xl mx-auto">
-        <h2 class="text-xl font-bold">수익 시뮬레이터 AI</h2>
-        <p class="text-sm text-gray-300 mt-1">광고 예산과 채널로 예상 ROAS를 시뮬레이션합니다</p>
+        <h2 class="text-xl font-bold">내 광고 점수 확인하기 💰</h2>
+        <p class="text-sm text-gray-300 mt-1">광고비랑 매출만 넣으면 신호등으로 알려드려요</p>
       </div>
     </div>
-    <div class="max-w-3xl mx-auto px-4 py-6 space-y-4">
-      <div class="bg-white rounded-2xl border border-gray-200 p-6">
-        <h3 class="text-sm font-bold text-gray-900 mb-4">시뮬레이션 정보 입력</h3>
-        <div class="space-y-4">
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">상품명 <span class="text-red-500">*</span></label>
-            <input id="rsProductName" type="text" placeholder="예: 수제 그래놀라" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">상품 가격 (원) <span class="text-red-500">*</span></label>
-              <input id="rsPrice" type="number" placeholder="예: 25000" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">광고 예산 (원) <span class="text-red-500">*</span></label>
-              <input id="rsBudget" type="number" placeholder="예: 500000" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">광고 채널</label>
-              <select id="rsChannel" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                <option value="instagram">인스타그램</option>
-                <option value="naver">네이버</option>
-                <option value="kakao">카카오</option>
-                <option value="youtube">유튜브</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">타겟 연령</label>
-              <select id="rsAge" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                <option value="all">전체</option>
-                <option value="10-20">10~20대</option>
-                <option value="30-40">30~40대</option>
-                <option value="50+">50대 이상</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">광고 기간 (일)</label>
-            <input id="rsDays" type="number" value="30" placeholder="예: 30" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    <div class="max-w-lg mx-auto px-4 py-6 space-y-4">
+      <div class="bg-white rounded-2xl border border-gray-200 p-5">
+        <h3 class="text-lg font-bold text-gray-900 mb-1">내 광고 점수 확인하기 💰</h3>
+        <p class="text-xs text-gray-500 mb-4">광고비랑 매출만 넣으면 신호등으로 알려드려요</p>
+
+        <!-- 1. 광고비 -->
+        <div class="mb-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">1. 광고에 얼마 썼어요?</label>
+          <div class="relative">
+            <input id="rsAdSpend" type="text" inputmode="numeric" placeholder="예: 300,000" class="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">원</span>
           </div>
         </div>
-        <button id="rsGenerateBtn" class="w-full mt-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">시뮬레이션 시작</button>
+
+        <!-- 2. 매출 -->
+        <div class="mb-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">2. 매출이 얼마였어요?</label>
+          <div class="relative">
+            <input id="rsRevenue" type="text" inputmode="numeric" placeholder="예: 540,000" class="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">원</span>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-1.5">💡 광고로 들어온 매출만 적어주세요</p>
+        </div>
+
+        <!-- 3. 채널 -->
+        <div class="mb-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">3. 어디에 광고했어요?</label>
+          <select id="rsChannel" class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            ${Object.entries(ROAS_CHANNELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+          </select>
+        </div>
+
+        <button id="rsGenerateBtn" class="w-full py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-xl transition">확인하기 →</button>
       </div>
       <div id="rsResult"></div>
     </div>
@@ -2578,186 +2789,180 @@ function renderRoasSimulatorTool() {
 }
 
 function setupRoasSimulatorTool() {
+  // 콤마 자동 포맷팅
+  const formatInput = (el) => {
+    el.addEventListener('input', () => {
+      const digits = el.value.replace(/[^0-9]/g, '');
+      el.value = digits ? Number(digits).toLocaleString() : '';
+    });
+  };
+  formatInput(document.getElementById('rsAdSpend'));
+  formatInput(document.getElementById('rsRevenue'));
   document.getElementById('rsGenerateBtn').addEventListener('click', handleRoasSimulatorGenerate);
 }
 
 async function handleRoasSimulatorGenerate() {
-  const productName = document.getElementById('rsProductName').value.trim();
-  const price = parseInt(document.getElementById('rsPrice').value);
-  const budget = parseInt(document.getElementById('rsBudget').value);
+  const adSpend = Number(document.getElementById('rsAdSpend').value.replace(/,/g, ''));
+  const revenue = Number(document.getElementById('rsRevenue').value.replace(/,/g, ''));
   const channel = document.getElementById('rsChannel').value;
-  const age = document.getElementById('rsAge').value;
-  const days = parseInt(document.getElementById('rsDays').value) || 30;
-  if (!productName || !price || !budget) { showToast('상품명, 상품 가격, 광고 예산을 입력해주세요'); return; }
+  if (!(adSpend > 0) || !(revenue >= 0)) { showToast('광고비와 매출을 입력해주세요'); return; }
 
-  const bench = channelBenchmarks[channel];
   const resultEl = document.getElementById('rsResult');
-  resultEl.innerHTML = renderLoadingState(['채널 벤치마크 분석 중...', '수익 시뮬레이션 중...', '리포트 생성 중...']);
+  resultEl.innerHTML = renderLoadingState(['광고 점수를 계산 중이에요…']);
 
-  const ageMap = { all: '전체 연령', '10-20': '10~20대', '30-40': '30~40대', '50+': '50대 이상' };
+  // 수식 계산 (AI 없어도 무조건 가능)
+  const { roas, profit, status } = calculateRoas(adSpend, revenue);
 
-  const prompt = `당신은 한국의 퍼포먼스 마케팅 전문가입니다. TOPIK 3급 수준의 쉬운 한국어로 작성하세요.
+  // 경량 AI 한 줄 처방 (실패해도 수식 결과는 표시)
+  let prescription = '';
+  let todoOne = '';
+  let isMock = true;
 
-상품명: ${productName}
-상품 가격: ${formatNumber(price)}원
-광고 예산: ${formatNumber(budget)}원
-광고 채널: ${bench.name}
-타겟 연령: ${ageMap[age]}
-광고 기간: ${days}일
+  if (isAIEnabled()) {
+    const statusKo = status === 'loss' ? '손해' : status === 'breakeven' ? '본전' : '좋아요';
+    const direction = status === 'loss'
+      ? '광고비를 줄이거나 광고 소재를 완전히 바꾸는'
+      : status === 'breakeven'
+        ? '같은 예산에서 광고 소재·문구를 개선하는'
+        : '잘 되는 광고에 예산을 더 키우는';
+    const prompt = `## 역할
+한국 퍼포먼스 마케팅 10년차 전문가예요.
+외국인 학생(TOPIK 3급)에게 ROAS 진단 결과를 한 줄로 알려줘요.
 
-채널 벤치마크:
-- CTR: ${bench.ctrMin}% ~ ${bench.ctrMax}%
-- CVR: ${bench.cvrMin}% ~ ${bench.cvrMax}%
-- CPC: ${bench.cpcMin}원 ~ ${bench.cpcMax}원
+## 입력 데이터
+- 광고비: ${adSpend.toLocaleString()}원
+- 매출: ${revenue.toLocaleString()}원
+- ROAS: ${roas} (${statusKo})
+- 광고 채널: ${ROAS_CHANNELS[channel].replace(/^[^\\s]+\\s/, '')}
 
-위 벤치마크를 기반으로 현실적인 시뮬레이션을 하세요. 아래 JSON 형식으로만 응답하세요:
+## 응답 형식 (JSON만, 다른 텍스트 X)
 {
-  "impressions": 예상 노출수(숫자),
-  "clicks": 예상 클릭수(숫자),
-  "ctr": CTR 퍼센트(숫자),
-  "conversions": 예상 전환수(숫자),
-  "cvr": CVR 퍼센트(숫자),
-  "revenue": 예상 매출(숫자),
-  "roas": ROAS 퍼센트(숫자),
-  "cpc": CPC(숫자),
-  "costPerConversion": 전환당 비용(숫자),
-  "roasGrade": "등급 (S/A/B/C/D)",
-  "advice": ["조언1", "조언2", "조언3"],
-  "channelTip": "${bench.name} 채널 활용 팁",
-  "report": "200자 내외의 시뮬레이션 분석 요약"
-}`;
-
-  const raw = await callGeminiAPI(prompt);
-  const data = raw ? safeParseJSON(raw) : null;
-
-  if (data && data.roas !== undefined) {
-    renderRoasSimulatorResult(resultEl, data, bench, budget, false);
-  } else {
-    // Mock: calculate using benchmark midpoints
-    const cpc = (bench.cpcMin + bench.cpcMax) / 2;
-    const ctr = (bench.ctrMin + bench.ctrMax) / 2;
-    const cvr = (bench.cvrMin + bench.cvrMax) / 2;
-    const clicks = Math.round(budget / cpc);
-    const impressions = Math.round(clicks / (ctr / 100));
-    const conversions = Math.round(clicks * (cvr / 100));
-    const revenue = conversions * price;
-    const roas = budget > 0 ? Math.round((revenue / budget) * 100) : 0;
-    const costPerConversion = conversions > 0 ? Math.round(budget / conversions) : 0;
-    let roasGrade = 'D';
-    if (roas >= 500) roasGrade = 'S';
-    else if (roas >= 300) roasGrade = 'A';
-    else if (roas >= 200) roasGrade = 'B';
-    else if (roas >= 100) roasGrade = 'C';
-
-    const mock = {
-      impressions, clicks, ctr: parseFloat(ctr.toFixed(1)), conversions, cvr: parseFloat(cvr.toFixed(1)),
-      revenue, roas, cpc: Math.round(cpc), costPerConversion, roasGrade,
-      advice: [
-        '광고 소재를 A/B 테스트하여 CTR을 높이세요',
-        '랜딩페이지 최적화로 전환율을 개선하세요',
-        '리타게팅 광고를 병행하면 효과가 높아집니다'
-      ],
-      channelTip: `${bench.name}은 비주얼 콘텐츠가 핵심입니다. 고품질 이미지와 짧은 영상을 활용하세요.`,
-      report: `${formatNumber(budget)}원의 예산으로 ${bench.name} 광고를 ${days}일간 집행할 경우, 약 ${formatNumber(impressions)}회 노출과 ${formatNumber(clicks)}회 클릭이 예상됩니다. ${formatNumber(conversions)}건의 전환으로 약 ${formatNumber(revenue)}원의 매출이 기대되며, ROAS ${roas}%로 ${roasGrade === 'S' || roasGrade === 'A' ? '양호한' : '개선이 필요한'} 수준입니다.`
-    };
-    renderRoasSimulatorResult(resultEl, mock, bench, budget, true);
-  }
+  "prescription": "큰 한 줄 처방. 형식: '동사 명령형\\n구체적 액션'. 줄바꿈 \\n 1개 사용. 예: '광고비를 줄이세요\\n30만원 → 20만원으로'",
+  "todoOne": "오늘 할 일 1개. 짧고 구체적인 행동. 예: '광고 사진을 새 걸로 바꿔보세요'"
 }
 
-function renderRoasSimulatorResult(el, data, bench, budget, isMock) {
-  const gradeColors = { S: 'bg-purple-100 text-purple-700', A: 'bg-blue-100 text-blue-700', B: 'bg-green-100 text-green-700', C: 'bg-amber-100 text-amber-700', D: 'bg-red-100 text-red-700' };
-  const gradeColor = gradeColors[data.roasGrade] || gradeColors.C;
+## 작성 규칙
+- prescription 방향: ${direction} 쪽으로
+- prescription 두 번째 줄에 ${adSpend.toLocaleString()}원 같은 실제 숫자를 활용한 구체적 변경
+- todoOne은 광고 사진/문구/타겟/시간대 중 1개에 대한 즉시 실행 가능한 행동
+- 모든 텍스트 TOPIK 3급 쉬운 한국어 ~해요 체
+- 어려운 용어 금지 (CTR, CPC, 리타겟팅 X)`;
+    try {
+      const raw = await callGemini(prompt);
+      const parsed = raw ? safeParseJSON(raw) : null;
+      if (parsed?.prescription && parsed?.todoOne) {
+        prescription = String(parsed.prescription);
+        todoOne = String(parsed.todoOne);
+        isMock = false;
+      }
+    } catch (err) { console.error('[ROAS] AI failed:', err); }
+  }
+
+  // Mock 폴백 (AI 실패 또는 미연결)
+  if (!prescription) {
+    const spendMan = Math.round(adSpend / 10000);
+    const lossPool = [
+      { p: `광고비를 줄이세요\n${spendMan}만원 → ${Math.max(1, Math.round(spendMan * 0.7))}만원으로`, t: '광고 사진을 새 걸로 바꿔보세요' },
+      { p: `타겟을 더 좁혀보세요\n관심사 1~2개로 집중`, t: '광고 문구의 첫 줄을 다시 써보세요' },
+    ];
+    const breakevenPool = [
+      { p: `광고 사진을 바꿔보세요\n눈에 띄는 색으로`, t: '광고 사진을 새 걸로 바꿔보세요' },
+      { p: `광고 문구를 더 짧게\n핵심만 한 줄로`, t: '광고 문구의 첫 줄을 다시 써보세요' },
+    ];
+    const profitPool = [
+      { p: `광고비를 늘려보세요\n${spendMan}만원 → ${Math.round(spendMan * 1.5)}만원으로`, t: '잘 되는 광고에 예산을 더 넣어보세요' },
+      { p: `같은 광고를 더 오래 돌려보세요\n7일 더 연장`, t: '광고 시간대를 저녁으로 바꿔보세요' },
+    ];
+    const pool = status === 'loss' ? lossPool : status === 'breakeven' ? breakevenPool : profitPool;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    prescription = pick.p;
+    todoOne = pick.t;
+  }
+
+  renderRoasSimulatorResult(resultEl, { adSpend, revenue, roas, profit, status, prescription, todoOne }, isMock);
+}
+
+function renderRoasSimulatorResult(el, data, isMock) {
+  const STATUS_THEME = {
+    loss:       { bg: 'bg-red-50',     border: 'border-red-600',     head: 'text-red-900',     sub: 'text-red-600',     emoji: '👇 ', label: '손해',   light: 'red' },
+    breakeven:  { bg: 'bg-amber-50',   border: 'border-amber-500',   head: 'text-amber-900',   sub: 'text-amber-700',   emoji: '✏️ ', label: '본전',   light: 'yellow' },
+    profit:     { bg: 'bg-emerald-50', border: 'border-emerald-600', head: 'text-emerald-900', sub: 'text-emerald-700', emoji: '🚀 ', label: '좋아요', light: 'green' },
+  };
+  const theme = STATUS_THEME[data.status];
+  const [line1, ...restLines] = data.prescription.split('\n');
+  const line2 = restLines.join(' ');
+  const planText = `[성과·검증 가설] 광고비 ${formatNumber(data.adSpend)}원, 매출 ${formatNumber(data.revenue)}원 → ROAS ${data.roas}× (${theme.label}), 이익 ${formatNumber(data.profit)}원\n처방: ${data.prescription.replace(/\n/g, ' ')}\n오늘 할 일: ${data.todoOne}`;
+
+  // 신호등
+  const tl = (color) => data.status === ({ red: 'loss', yellow: 'breakeven', green: 'profit' })[color];
+  const trafficLight = `
+    <div class="flex items-center justify-center gap-3 py-2">
+      <div class="w-10 h-10 rounded-full ${tl('red') ? 'bg-red-500 shadow-lg shadow-red-300' : 'bg-red-200'}"></div>
+      <div class="w-10 h-10 rounded-full ${tl('yellow') ? 'bg-amber-400 shadow-lg shadow-amber-300' : 'bg-amber-200'}"></div>
+      <div class="w-10 h-10 rounded-full ${tl('green') ? 'bg-emerald-500 shadow-lg shadow-emerald-300' : 'bg-emerald-200'}"></div>
+    </div>
+    <div class="text-center text-xs font-bold ${theme.head}">
+      ${data.status === 'loss' ? '손해 · ROAS 1.5 미만' : data.status === 'breakeven' ? '본전 · ROAS 1.5~2.5' : '좋아요 · ROAS 2.5 초과'}
+    </div>
+  `;
 
   el.innerHTML = `
     <div class="fade-in space-y-4">
-      ${isMock ? renderMockBanner() : ''}
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <div class="flex items-center justify-between mb-4">
-          <h4 class="text-sm font-bold text-gray-900">📊 시뮬레이션 결과</h4>
-          <span class="px-3 py-1 ${gradeColor} text-xs font-bold rounded-full">등급: ${data.roasGrade}</span>
+      ${isMock && isAIEnabled() ? '<p class="text-[11px] text-amber-700 text-center">⚠️ AI 처방을 가져오지 못해 예시를 보여드리고 있어요</p>' : ''}
+      <button onclick='sendToPlan(6, ${planArg(planText)})' class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [성과·검증] 칸으로 보내기</button>
+
+      <div class="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+        <!-- 큰 ROAS 숫자 -->
+        <div class="text-center py-5 px-3 bg-gray-50 rounded-2xl border border-gray-200">
+          <div class="text-[11px] text-gray-500 font-semibold tracking-widest">━━━ ROAS ━━━</div>
+          <div class="text-[54px] font-black text-gray-900 leading-none mt-2">${data.roas}<span class="text-[32px]">×</span></div>
+          <div class="text-xs text-gray-500 mt-2">광고비 1원 → 매출 <b class="text-gray-900">${data.roas}원</b></div>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <div class="bg-gray-50 rounded-xl p-3 text-center">
-            <p class="text-[10px] text-gray-500 mb-1">노출수</p>
-            <p class="text-lg font-bold text-gray-900">${formatNumber(data.impressions)}</p>
-          </div>
-          <div class="bg-gray-50 rounded-xl p-3 text-center">
-            <p class="text-[10px] text-gray-500 mb-1">클릭수</p>
-            <p class="text-lg font-bold text-gray-900">${formatNumber(data.clicks)}</p>
-          </div>
-          <div class="bg-gray-50 rounded-xl p-3 text-center">
-            <p class="text-[10px] text-gray-500 mb-1">CTR (클릭률)</p>
-            <p class="text-lg font-bold text-blue-600">${data.ctr}%</p>
-          </div>
-          <div class="bg-gray-50 rounded-xl p-3 text-center">
-            <p class="text-[10px] text-gray-500 mb-1">전환수</p>
-            <p class="text-lg font-bold text-gray-900">${formatNumber(data.conversions)}</p>
-          </div>
-          <div class="bg-gray-50 rounded-xl p-3 text-center">
-            <p class="text-[10px] text-gray-500 mb-1">CVR (전환율)</p>
-            <p class="text-lg font-bold text-blue-600">${data.cvr}%</p>
-          </div>
-          <div class="bg-gray-50 rounded-xl p-3 text-center">
-            <p class="text-[10px] text-gray-500 mb-1">예상 매출</p>
-            <p class="text-lg font-bold text-green-600">${formatNumber(data.revenue)}원</p>
-          </div>
+
+        ${trafficLight}
+
+        <!-- 큰 한 줄 처방 -->
+        <div class="${theme.bg} border-2 ${theme.border} rounded-2xl p-5 text-center">
+          <div class="text-[20px] font-black ${theme.head} leading-tight whitespace-pre-line">${theme.emoji}${line1}</div>
+          ${line2 ? `<div class="text-[13px] ${theme.sub} mt-1.5 font-semibold">${line2}</div>` : ''}
         </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">💰 핵심 지표</h4>
-        <div class="grid grid-cols-3 gap-3">
-          <div class="text-center p-3 ${data.roas >= 200 ? 'bg-green-50' : 'bg-red-50'} rounded-xl">
-            <p class="text-[10px] ${data.roas >= 200 ? 'text-green-600' : 'text-red-600'} font-bold mb-1">ROAS</p>
-            <p class="text-xl font-black ${data.roas >= 200 ? 'text-green-700' : 'text-red-700'}">${formatNumber(data.roas)}%</p>
-          </div>
-          <div class="text-center p-3 bg-blue-50 rounded-xl">
-            <p class="text-[10px] text-blue-600 font-bold mb-1">CPC</p>
-            <p class="text-xl font-black text-blue-700">${formatNumber(data.cpc)}원</p>
-          </div>
-          <div class="text-center p-3 bg-purple-50 rounded-xl">
-            <p class="text-[10px] text-purple-600 font-bold mb-1">전환당 비용</p>
-            <p class="text-xl font-black text-purple-700">${formatNumber(data.costPerConversion)}원</p>
-          </div>
-        </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">🎯 채널 벤치마크 비교</h4>
-        <div class="space-y-3">
+
+        <!-- 오늘 할 일 -->
+        <div class="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center gap-3">
+          <div class="text-2xl">✅</div>
           <div>
-            <div class="flex justify-between text-xs mb-1"><span class="text-gray-600">CTR</span><span class="font-bold text-gray-900">${data.ctr}% <span class="text-gray-400 font-normal">(기준: ${bench.ctrMin}~${bench.ctrMax}%)</span></span></div>
-            <div class="w-full bg-gray-100 rounded-full h-2"><div class="bg-blue-500 h-2 rounded-full" style="width:${Math.min(100, (data.ctr / bench.ctrMax) * 100)}%"></div></div>
-          </div>
-          <div>
-            <div class="flex justify-between text-xs mb-1"><span class="text-gray-600">CVR</span><span class="font-bold text-gray-900">${data.cvr}% <span class="text-gray-400 font-normal">(기준: ${bench.cvrMin}~${bench.cvrMax}%)</span></span></div>
-            <div class="w-full bg-gray-100 rounded-full h-2"><div class="bg-green-500 h-2 rounded-full" style="width:${Math.min(100, (data.cvr / bench.cvrMax) * 100)}%"></div></div>
-          </div>
-          <div>
-            <div class="flex justify-between text-xs mb-1"><span class="text-gray-600">CPC</span><span class="font-bold text-gray-900">${formatNumber(data.cpc)}원 <span class="text-gray-400 font-normal">(기준: ${formatNumber(bench.cpcMin)}~${formatNumber(bench.cpcMax)}원)</span></span></div>
-            <div class="w-full bg-gray-100 rounded-full h-2"><div class="bg-amber-500 h-2 rounded-full" style="width:${Math.min(100, (data.cpc / bench.cpcMax) * 100)}%"></div></div>
+            <div class="text-[11px] text-amber-800 font-bold">오늘 할 일</div>
+            <div class="text-sm text-amber-900 font-bold mt-0.5">${data.todoOne}</div>
           </div>
         </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <h4 class="text-sm font-bold text-gray-900 mb-3">💡 개선 조언</h4>
-        <div class="space-y-2">
-          ${data.advice.map((a, i) => `
-            <div class="flex items-start gap-2 bg-blue-50 rounded-lg p-3">
-              <span class="w-5 h-5 flex-shrink-0 flex items-center justify-center bg-blue-200 text-blue-800 rounded-full text-xs font-bold">${i + 1}</span>
-              <p class="text-xs text-blue-900">${a}</p>
+
+        <!-- 자세한 숫자 -->
+        <div class="bg-white border border-gray-200 rounded-xl p-3">
+          <div class="text-[11px] font-bold text-gray-500 mb-2 tracking-wider">📊 자세한 숫자</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-gray-50 p-2 rounded-md">
+              <div class="text-[10px] text-gray-500">광고비</div>
+              <div class="text-sm font-extrabold text-gray-900">${formatNumber(data.adSpend)}원</div>
             </div>
-          `).join('')}
+            <div class="bg-gray-50 p-2 rounded-md">
+              <div class="text-[10px] text-gray-500">매출</div>
+              <div class="text-sm font-extrabold text-gray-900">${formatNumber(data.revenue)}원</div>
+            </div>
+            <div class="${data.profit >= 0 ? 'bg-emerald-50' : 'bg-red-50'} p-2 rounded-md">
+              <div class="text-[10px] ${data.profit >= 0 ? 'text-emerald-800' : 'text-red-800'}">남은 돈 (이익)</div>
+              <div class="text-sm font-extrabold ${data.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}">${formatNumber(data.profit)}원</div>
+            </div>
+            <div class="bg-gray-50 p-2 rounded-md">
+              <div class="text-[10px] text-gray-500">ROAS</div>
+              <div class="text-sm font-extrabold text-gray-900">${data.roas}×</div>
+            </div>
+          </div>
+          <div class="text-[11px] text-gray-500 mt-2 leading-relaxed">
+            📝 <b>계산:</b> 매출 ${formatNumber(data.revenue)} ÷ 광고비 ${formatNumber(data.adSpend)} = <b class="text-gray-900">${data.roas}</b><br>
+            광고비 1원 쓸 때마다 매출 ${data.roas}원이 들어왔다는 뜻이에요.
+            ${data.status === 'breakeven' ? ' 본전(2.0)에 살짝 못 미쳐요.' : data.status === 'loss' ? ' 본전(2.0)보다 낮아서 손해예요.' : ' 본전(2.0)을 넘었어요!'}
+          </div>
         </div>
-        <div class="mt-3 bg-gray-50 rounded-lg p-3">
-          <p class="text-xs text-gray-500 font-bold mb-1">📌 ${bench.name} 채널 팁</p>
-          <p class="text-xs text-gray-700">${data.channelTip}</p>
-        </div>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-200 p-5">
-        <div class="flex items-center justify-between mb-3">
-          <h4 class="text-sm font-bold text-gray-900">📋 분석 리포트</h4>
-          ${renderCopyBtn(data.report, '복사')}
-        </div>
-        <p class="text-sm text-gray-700 leading-relaxed">${data.report}</p>
       </div>
     </div>
   `;
