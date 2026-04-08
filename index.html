@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>마케팅 기획 AI 비서</title>
+<title>기획안 스튜디오</title>
+<meta name="description" content="프로그램·교육·앱·이벤트 — 어떤 분야든 기획안 한 장을 완성하는 학습 도구. 마케팅 기획에도 활용 가능.">
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -40,7 +42,7 @@ input[type="number"] { -moz-appearance: textfield; }
   <div class="max-w-sm w-full mx-4 text-center">
     <div class="mb-8">
       <div class="text-5xl mb-4">🚀</div>
-      <h1 class="text-2xl font-bold text-white mb-2">마케팅 기획 AI 비서</h1>
+      <h1 class="text-2xl font-bold text-white mb-2">기획안 스튜디오</h1>
       <p class="text-sm text-gray-400">접속 코드를 입력하세요</p>
     </div>
     <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
@@ -60,7 +62,7 @@ input[type="number"] { -moz-appearance: textfield; }
       <button id="backBtn" onclick="goHome()" class="hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition">
         <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       </button>
-      <h1 class="text-base font-bold text-gray-900">마케팅 기획 AI 비서</h1>
+      <h1 class="text-base font-bold text-gray-900">기획안 스튜디오</h1>
     </div>
     <div class="flex items-center gap-3">
       <div id="teamBadge" class="hidden items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
@@ -141,6 +143,67 @@ document.addEventListener('DOMContentLoaded', () => {
   const saved = sessionStorage.getItem('gate-team');
   if (saved) { try { const t = JSON.parse(saved); enterApp(t); } catch {} }
 });
+
+// ==================== PLAN DRAFT (기획안 양식) ====================
+const PLAN_DRAFT_KEY = 'marketing-plan-draft';
+
+function loadPlanDraft() {
+  try { return JSON.parse(sessionStorage.getItem(PLAN_DRAFT_KEY) || '{}'); }
+  catch { return {}; }
+}
+function savePlanDraft(field, value) {
+  const draft = loadPlanDraft();
+  draft[field] = value;
+  sessionStorage.setItem(PLAN_DRAFT_KEY, JSON.stringify(draft));
+}
+function clearPlanDraft() {
+  sessionStorage.removeItem(PLAN_DRAFT_KEY);
+}
+// onclick 속성(작은따옴표 wrapped) 안에 안전하게 넣을 수 있는 JSON 문자열
+function planArg(text) {
+  return JSON.stringify(String(text || ''))
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+// 도구 결과 → 양식 칸으로 자동 채움. mode: 'replace'(기본) | 'append'
+function sendToPlan(slot, text, mode) {
+  if (!text) return;
+  const clean = String(text).trim();
+  if (!clean) return;
+  const draft = loadPlanDraft();
+  const key = 'slot' + slot;
+  if (mode === 'append' && draft[key]) {
+    draft[key] = draft[key] + '\n' + clean;
+  } else {
+    draft[key] = clean;
+  }
+  sessionStorage.setItem(PLAN_DRAFT_KEY, JSON.stringify(draft));
+  showToast(`기획안 ${slot}번 칸에 저장되었습니다`);
+  // 잠시 후 홈으로 이동해서 양식 확인
+  setTimeout(() => { location.hash = '#home'; }, 700);
+}
+async function exportPlanAsPNG() {
+  const sheet = document.getElementById('planSheet');
+  if (!sheet) { showToast('기획안 양식을 찾을 수 없습니다'); return; }
+  if (typeof html2canvas === 'undefined') { showToast('PNG 라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요'); return; }
+  showToast('PNG 만드는 중...');
+  try {
+    const canvas = await html2canvas(sheet, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    const draft = loadPlanDraft();
+    const safeTitle = (draft.title || '기획안').replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ_-]/g, '_').slice(0, 40);
+    a.download = `${safeTitle}_${new Date().toISOString().slice(0,10)}.png`;
+    a.href = url;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    showToast('저장 완료! 사진첩/다운로드 폴더 확인');
+  } catch (e) {
+    console.error('PNG export error:', e);
+    showToast('PNG 저장에 실패했습니다. 화면 캡처로 대체해주세요');
+  }
+}
 
 // ==================== STATE ====================
 const state = {
@@ -289,26 +352,27 @@ const personaTemplates = {
 };
 
 // ==================== TOOLS CONFIG ====================
+// 기획안 양식 6항목: 1.자기/팀 이해 2.현황·시장 분석 3.타겟·페르소나 4.컨셉·차별점·이름 5.실행 계획·콘텐츠 6.성과·검증
 const toolCards = [
-  { group: 'AI 분석 도구', isAI: true, tools: [
-    { hash: 'market-scanner', name: '시장 리서치 AI', icon: '🔍', desc: '업종/키워드 기반 시장 분석', tags: ['AI', '리서치'] },
-    { hash: 'edge-maker', name: '컨셉 빌더 AI', icon: '💡', desc: '브랜드 컨셉 자동 생성', tags: ['AI', '브랜딩'] },
-    { hash: 'content-planner', name: '콘텐츠 기획 AI', icon: '📝', desc: 'SNS 콘텐츠 캘린더 생성', tags: ['AI', '콘텐츠'] },
-    { hash: 'sales-planner', name: '세일즈 전략 AI', icon: '📊', desc: '매출 향상 전략 제안', tags: ['AI', '세일즈'] },
-    { hash: 'roas-simulator', name: '수익 시뮬레이터 AI', icon: '💰', desc: '광고 수익률 예측', tags: ['AI', '퍼포먼스'] },
-    { hash: 'copywriter', name: '카피라이팅 AI', icon: '✍️', desc: '광고 문구 자동 생성', tags: ['AI', '카피'] },
+  { group: '기획안 작성 핵심 도구', subtitle: '이 6개로 기획안 한 장이 채워집니다', isAI: false, collapsed: false, tools: [
+    { hash: 'aptitude-test',  name: '기획자 적성 테스트', icon: '🧠', desc: '기획안 [자기/팀 이해] 칸 — 나의 강점부터 알기', tags: ['1. 자기이해'] },
+    { hash: 'market-scanner', name: '시장 리서치 AI',     icon: '🔍', desc: '기획안 [현황·시장 분석] 칸을 1분 만에', tags: ['2. 현황 분석', 'AI'] },
+    { hash: 'persona-maker',  name: '페르소나 메이커',    icon: '👤', desc: '기획안 [타겟] 칸을 한 사람으로 구체화', tags: ['3. 타겟'] },
+    { hash: 'edge-maker',     name: '컨셉 빌더 AI',       icon: '💡', desc: '기획안 [컨셉·이름] 칸을 한 줄로', tags: ['4. 컨셉', 'AI'] },
+    { hash: 'usp-finder',     name: 'USP 파인더',         icon: '🎯', desc: '기획안 [차별점] 칸 보조 — 우리만의 한 가지', tags: ['4. 컨셉'] },
+    { hash: 'color-picker',   name: '브랜드 컬러피커',    icon: '🎨', desc: '브랜드 컬러 — 발표 자료까지 통일', tags: ['4. 컨셉'] },
   ]},
-  { group: '실무 기획 도구', isAI: false, tools: [
-    { hash: 'persona-maker', name: '타겟 페르소나 설계', icon: '👤', desc: '이상적인 고객 프로필 만들기', tags: ['기획', '타겟'] },
-    { hash: 'usp-finder', name: '차별화 포인트 도출기', icon: '🎯', desc: '경쟁사 대비 USP 찾기', tags: ['기획', '전략'] },
-    { hash: 'color-picker', name: '브랜드 컬러 기획', icon: '🎨', desc: '감정 기반 컬러 팔레트', tags: ['디자인', '브랜딩'] },
-    { hash: 'hashtag-generator', name: '키워드 전략 생성기', icon: '#️⃣', desc: '업종별 해시태그 추천', tags: ['SNS', '키워드'] },
-    { hash: 'roi-calculator', name: '예산 수익률 분석기', icon: '🧮', desc: 'ROAS/ROI 즉시 계산', tags: ['분석', '예산'] },
-    { hash: 'sns-ad-maker', name: '비주얼 시안 생성기', icon: '🖼️', desc: 'SNS 광고 시안 미리보기', tags: ['디자인', 'SNS'] },
+  { group: '기타 활용', subtitle: '기획안이 통과된 다음, 실행·마케팅 단계에 쓰는 도구', isAI: false, collapsed: true, tools: [
+    { hash: 'copywriter',        name: '카피라이팅 AI',       icon: '✍️', desc: '광고 문구·헤드 카피 생성', tags: ['실행', 'AI'] },
+    { hash: 'content-planner',   name: '콘텐츠 기획 AI',      icon: '📝', desc: '카드뉴스 4장 슬라이드 기획', tags: ['실행', 'AI'] },
+    { hash: 'sales-planner',     name: '세일즈 전략 AI',      icon: '📊', desc: '상세페이지·라이브 대본 (마케팅)', tags: ['실행', 'AI'] },
+    { hash: 'roas-simulator',    name: '수익 시뮬레이터 AI',  icon: '💰', desc: '광고 수익률 예측 (마케팅)', tags: ['실행', 'AI'] },
+    { hash: 'roi-calculator',    name: '예산 수익률 분석기',  icon: '🧮', desc: 'ROAS/ROI 계산기 (마케팅)', tags: ['실행'] },
+    { hash: 'hashtag-generator', name: '키워드 전략 생성기',  icon: '#️⃣', desc: '업종별 해시태그 추천 (SNS)', tags: ['실행'] },
+    { hash: 'sns-ad-maker',      name: '비주얼 시안 생성기',  icon: '🖼️', desc: 'SNS 광고 시안 미리보기', tags: ['실행'] },
   ]},
-  { group: '레퍼런스', isAI: false, tools: [
-    { hash: 'aptitude-test', name: '기획자 적성 분석기', icon: '🧠', desc: '나의 마케팅 성향 파악', tags: ['테스트', '자기분석'] },
-    { hash: 'glossary', name: '기획 용어 사전', icon: '📖', desc: '마케팅 필수 용어 50선', tags: ['학습', '용어'] },
+  { group: '학습 자료', subtitle: '수업 중 즉석 참고', isAI: false, collapsed: false, tools: [
+    { hash: 'glossary', name: '기획 용어 사전', icon: '📖', desc: '기획·마케팅 필수 용어 50선', tags: ['학습'] },
   ]},
 ];
 
@@ -493,40 +557,103 @@ window.addEventListener('hashchange', () => { if (sessionStorage.getItem('gate-t
 // load 시 게이트 확인은 DOMContentLoaded 핸들러에서 처리
 
 // ==================== HOME ====================
+const PLAN_SLOTS = [
+  { n: 1, title: '자기/팀 이해',        hint: '나/우리 팀의 강점과 역할은 무엇인가요?',           tool: 'aptitude-test',  toolLabel: '적성 테스트 열기' },
+  { n: 2, title: '현황·시장 분석',      hint: '지금 왜 필요한가요? 누가 이미 하고 있나요?',         tool: 'market-scanner', toolLabel: '시장 리서치 열기' },
+  { n: 3, title: '타겟·페르소나',       hint: '누구를 위한 기획인가요? 한 사람으로 적어보세요.',     tool: 'persona-maker',  toolLabel: '페르소나 열기' },
+  { n: 4, title: '컨셉·차별점·이름',    hint: '한 줄로 뭐라고 부르나요? 다른 것과 무엇이 다른가요?', tool: 'edge-maker',     toolLabel: '컨셉 빌더 열기' },
+  { n: 5, title: '실행 계획·콘텐츠',    hint: '구체적으로 무엇을 어떤 순서로 할 건가요?',           tool: null,             toolLabel: '직접 작성' },
+  { n: 6, title: '성과·검증',           hint: '어떻게 잘 됐다고 판단할 건가요? (지표/방법)',         tool: null,             toolLabel: '직접 작성' },
+];
+
 function renderHome() {
-  const groupsHTML = toolCards.map(group => `
+  const draft = loadPlanDraft();
+
+  const planFormHTML = `
     <section class="mb-10">
-      <div class="flex items-center gap-2 mb-4">
-        <h3 class="text-lg font-bold text-gray-900">${group.group}</h3>
-        ${group.isAI ? '<span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">AI</span>' : ''}
-        <span class="text-sm text-gray-400">${group.tools.length}개</span>
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h3 class="text-lg font-bold text-gray-900">📄 오늘의 기획안 한 장</h3>
+          <p class="text-xs text-gray-500 mt-0.5">프로그램·교육·앱·이벤트 — 어떤 분야든. 6칸을 채우면 한 장 기획안이 완성됩니다.</p>
+        </div>
+        <button onclick="exportPlanAsPNG()" class="hidden md:inline-flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition">
+          📥 PNG 저장
+        </button>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-        ${group.tools.map(t => `
-          <a href="#${t.hash}" class="bg-white rounded-2xl border border-gray-200 p-4 card-hover block cursor-pointer">
-            <div class="text-3xl mb-3">${t.icon}</div>
-            <h4 class="text-sm font-bold text-gray-900 mb-1">${t.name}</h4>
-            <p class="text-xs text-gray-500 mb-3 leading-relaxed">${t.desc}</p>
-            <div class="flex flex-wrap gap-1">
-              ${t.tags.map(tag => `<span class="px-2 py-0.5 ${tag === 'AI' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'} text-[10px] font-medium rounded-full">${tag}</span>`).join('')}
+      <div id="planSheet" class="bg-white rounded-2xl border border-gray-200 p-5 md:p-6 shadow-sm">
+        <div class="text-center pb-3 mb-4 border-b border-gray-200">
+          <p class="text-xs text-gray-400">기획안 한 장</p>
+          <input id="planTitle" type="text" value="${(draft.title || '').replace(/"/g,'&quot;')}" placeholder="기획안 제목 (예: 시니어 디지털 교실 운영안)" oninput="savePlanDraft('title', this.value)" class="w-full text-center text-base font-bold text-gray-900 focus:outline-none mt-1 placeholder-gray-300" />
+        </div>
+        <div class="space-y-4">
+          ${PLAN_SLOTS.map(s => `
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-bold text-gray-700">${s.n}. ${s.title}</label>
+                ${s.tool ? `<a href="#${s.tool}" class="text-[11px] text-blue-600 hover:underline">→ ${s.toolLabel}</a>` : `<span class="text-[11px] text-gray-400">${s.toolLabel}</span>`}
+              </div>
+              <textarea data-slot="${s.n}" oninput="savePlanDraft('slot${s.n}', this.value)" placeholder="${s.hint}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 resize-none" rows="2">${(draft['slot'+s.n] || '').replace(/</g,'&lt;')}</textarea>
             </div>
-          </a>
-        `).join('')}
+          `).join('')}
+        </div>
       </div>
+      <div class="mt-3 flex gap-2">
+        <button onclick="exportPlanAsPNG()" class="flex-1 md:flex-none inline-flex items-center justify-center gap-1 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📥 기획안 한 장 PNG로 저장</button>
+        <button onclick="if(confirm('기획안 내용을 모두 지울까요?')){clearPlanDraft();location.reload();}" class="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition">초기화</button>
+      </div>
+      <p class="text-[11px] text-gray-400 mt-2">⚠️ 본인 실명·연락처는 적지 마세요. 가상 시나리오용입니다. 탭을 닫으면 내용이 사라지니 PNG로 저장해두세요.</p>
     </section>
-  `).join('');
+  `;
+
+  const groupsHTML = toolCards.map((group, gIdx) => {
+    const collapsibleId = `group-${gIdx}`;
+    return `
+      <section class="mb-10">
+        <div class="flex items-center justify-between mb-3 ${group.collapsed ? 'cursor-pointer' : ''}" ${group.collapsed ? `onclick="toggleGroup('${collapsibleId}')"` : ''}>
+          <div class="flex items-center gap-2">
+            <h3 class="text-lg font-bold text-gray-900">${group.group}</h3>
+            <span class="text-sm text-gray-400">${group.tools.length}개</span>
+            ${group.collapsed ? `<svg id="${collapsibleId}-arrow" class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>` : ''}
+          </div>
+          ${group.subtitle ? `<p class="hidden md:block text-xs text-gray-400">${group.subtitle}</p>` : ''}
+        </div>
+        ${group.subtitle ? `<p class="md:hidden text-xs text-gray-400 mb-3 -mt-2">${group.subtitle}</p>` : ''}
+        <div id="${collapsibleId}-body" class="${group.collapsed ? 'hidden' : ''} grid grid-cols-2 md:grid-cols-3 gap-4">
+          ${group.tools.map(t => `
+            <a href="#${t.hash}" class="bg-white rounded-2xl border border-gray-200 p-4 card-hover block cursor-pointer">
+              <div class="text-3xl mb-3">${t.icon}</div>
+              <h4 class="text-sm font-bold text-gray-900 mb-1">${t.name}</h4>
+              <p class="text-xs text-gray-500 mb-3 leading-relaxed">${t.desc}</p>
+              <div class="flex flex-wrap gap-1">
+                ${t.tags.map(tag => `<span class="px-2 py-0.5 ${tag === 'AI' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'} text-[10px] font-medium rounded-full">${tag}</span>`).join('')}
+              </div>
+            </a>
+          `).join('')}
+        </div>
+      </section>
+    `;
+  }).join('');
 
   return `
     <div class="gradient-hero text-white py-16 px-4 mb-8">
       <div class="max-w-5xl mx-auto text-center">
-        <h2 class="text-2xl md:text-3xl font-black mb-3">마케팅 기획 AI 비서</h2>
-        <p class="text-sm md:text-base text-gray-300 leading-relaxed">마케팅 초보자를 위한 14가지 기획 도구<br>AI와 함께 전문가처럼 기획하세요</p>
+        <h2 class="text-2xl md:text-3xl font-black mb-3">기획안 스튜디오</h2>
+        <p class="text-sm md:text-base text-gray-300 leading-relaxed">프로그램·교육·앱·이벤트 — 어떤 분야든<br>기획안 한 장을 완성하세요</p>
       </div>
     </div>
     <div class="max-w-5xl mx-auto px-4 pb-16">
+      ${planFormHTML}
       ${groupsHTML}
     </div>
   `;
+}
+
+function toggleGroup(id) {
+  const body = document.getElementById(id + '-body');
+  const arrow = document.getElementById(id + '-arrow');
+  if (!body) return;
+  body.classList.toggle('hidden');
+  if (arrow) arrow.classList.toggle('rotate-180');
 }
 
 // ==================== AI PLACEHOLDER ====================
@@ -834,7 +961,7 @@ function renderROIResults() {
 function renderColorPicker() {
   return `
     <div class="gradient-tool-header text-white py-10 px-4">
-      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">브랜드 컬러 기획</h2><p class="text-sm text-gray-300 mt-1">감정 기반 컬러 팔레트 추천</p></div>
+      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">브랜드 컬러피커</h2><p class="text-sm text-gray-300 mt-1">기획안 [컨셉] 보조 — 발표 자료까지 통일</p></div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-6">
       <p class="text-sm text-gray-600 mb-4">브랜드가 전달할 감정을 선택하세요.</p>
@@ -874,8 +1001,10 @@ function renderColorResult() {
   const sims = similarEmotions[e.id] || [];
   const allHexes = [e.mainColor.hex, ...e.subColors.map(s => s.hex)];
 
+  const planText = `[브랜드 컬러] ${e.mainColor.nameKo} (${e.mainColor.hex}) — ${e.emotionKo}: ${e.description}`;
   document.getElementById('colorResult').innerHTML = `
     <div class="fade-in space-y-4">
+      <button onclick='sendToPlan(4, ${planArg(planText)}, "append")' class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [컨셉] 칸에 추가하기</button>
       <!-- Main Color -->
       <div class="bg-white rounded-2xl border border-gray-200 p-6">
         <p class="text-xs font-medium text-gray-500 mb-1">${e.emotionKo} - ${e.description}</p>
@@ -948,7 +1077,7 @@ function renderPersonaMaker() {
   const p = state.persona;
   return `
     <div class="gradient-tool-header text-white py-10 px-4">
-      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">타겟 페르소나 설계</h2><p class="text-sm text-gray-300 mt-1">이상적인 고객 프로필 만들기</p></div>
+      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">페르소나 메이커</h2><p class="text-sm text-gray-300 mt-1">기획안 [타겟] 칸을 한 사람으로 구체화</p></div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-6">
       <!-- Quick Start -->
@@ -1055,8 +1184,10 @@ function renderPersonaResult() {
 주요 SNS: ${p.sns.map(s => snsMap[s]).join(', ') || '-'}
 일상 루틴: ${p.routine || '-'}`;
 
+  const planText = `[타겟] ${p.name} (${p.age}세, ${p.gender || '-'}, ${p.occupation})\n관심사: ${p.interests || '-'}\n고민: ${p.painPoints || '-'}\n목표: ${p.goals || '-'}`;
   document.getElementById('personaResult').innerHTML = `
-    <div class="fade-in">
+    <div class="fade-in space-y-4">
+      <button onclick='sendToPlan(3, ${planArg(planText)})' class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [타겟] 칸으로 보내기</button>
       <div class="bg-white rounded-2xl border border-gray-200 p-6">
         <div class="flex items-center gap-3 mb-4">
           <div class="text-4xl">${genderEmoji}</div>
@@ -1086,7 +1217,7 @@ function renderPersonaResult() {
 function renderUSPFinder() {
   return `
     <div class="gradient-tool-header text-white py-10 px-4">
-      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">차별화 포인트 도출기</h2><p class="text-sm text-gray-300 mt-1">USP를 찾아보세요</p></div>
+      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">USP 파인더</h2><p class="text-sm text-gray-300 mt-1">기획안 [차별점] 칸 — 우리만의 한 가지를 찾아보세요</p></div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-6">
       <div id="uspContent"></div>
@@ -1161,9 +1292,11 @@ function renderUSPStep() {
     const benefit = `${d.targetNeeds}을(를) 원하신다면, "${d.productName}"을(를) 선택하세요. ${d.competitors}와 달리 ${d.strengths}하니까요.`;
     const emotional = `${d.strengths}. "${d.productName}", 당신의 ${d.targetNeeds}을(를) 위한 유일한 선택.`;
 
+    const planText = `[차별점 / USP] ${classic}`;
     el.innerHTML = `${progress}
       <div class="space-y-4 fade-in">
         <div class="text-center mb-2"><h3 class="text-lg font-bold text-gray-900">USP 도출 결과</h3><p class="text-xs text-gray-500">"${d.productName}"을 위한 3가지 USP 제안</p></div>
+        <button onclick='sendToPlan(4, ${planArg(planText)}, "append")' class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [컨셉·차별점] 칸에 추가하기</button>
         ${[
           { badge: '🏷️ 클래식', color: 'blue', text: classic },
           { badge: '🎯 베네핏', color: 'green', text: benefit },
@@ -1422,7 +1555,7 @@ function renderAdPreview() {
 function renderAptitudeTest() {
   return `
     <div class="gradient-tool-header text-white py-10 px-4">
-      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">기획자 적성 분석기</h2><p class="text-sm text-gray-300 mt-1">나의 마케팅 성향 파악</p></div>
+      <div class="max-w-3xl mx-auto"><h2 class="text-xl font-bold">기획자 적성 테스트</h2><p class="text-sm text-gray-300 mt-1">기획안 [자기/팀 이해] 칸을 위해, 나의 강점부터 알기</p></div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-6">
       <div id="aptContent"></div>
@@ -1440,8 +1573,8 @@ function renderAptPhase() {
     el.innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-200 p-8 text-center fade-in">
         <div class="text-5xl mb-4">🧠</div>
-        <h3 class="text-xl font-bold text-gray-900 mb-2">나는 어떤 마케팅 기획자일까?</h3>
-        <p class="text-sm text-gray-600 mb-6 leading-relaxed">10개의 상황 질문으로 당신의 마케팅 성향을 분석합니다.<br>CEO, PM, CPO, CMO, CSL 중 가장 적합한 유형을 찾아보세요.</p>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">나는 어떤 유형의 기획자일까?</h3>
+        <p class="text-sm text-gray-600 mb-6 leading-relaxed">10개의 상황 질문으로 당신의 기획 성향을 분석합니다.<br>CEO, PM, CPO, CMO, CSL 중 가장 적합한 유형을 찾아보세요.</p>
         <button id="aptStartBtn" class="px-8 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">시작하기</button>
       </div>`;
     document.getElementById('aptStartBtn').addEventListener('click', () => {
@@ -1501,8 +1634,10 @@ function renderAptPhase() {
     const maxType = Object.keys(state.aptScores).reduce((a,b) => state.aptScores[a] > state.aptScores[b] ? a : b);
     const result = personaResults[maxType];
     const maxScore = Math.max(...Object.values(state.aptScores));
+    const planText = `[자기/팀 이해] 나의 기획자 유형: ${result.title} (${result.name})\n${result.description}\n강점: ${result.strengths.join(', ')}`;
     el.innerHTML = `
       <div class="fade-in space-y-4">
+        <button onclick='sendToPlan(1, ${planArg(planText)})' class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [자기/팀 이해] 칸으로 보내기</button>
         <div class="bg-white rounded-2xl border border-gray-200 p-6 text-center">
           <div class="text-5xl mb-3">${result.emoji}</div>
           <h3 class="text-xl font-bold text-gray-900 mb-1">${result.title}</h3>
@@ -1651,7 +1786,7 @@ function renderMarketScannerTool() {
     <div class="gradient-tool-header text-white py-10 px-4">
       <div class="max-w-3xl mx-auto">
         <h2 class="text-xl font-bold">시장 리서치 AI</h2>
-        <p class="text-sm text-gray-300 mt-1">키워드를 입력하면 AI가 시장 분석 리포트를 생성합니다</p>
+        <p class="text-sm text-gray-300 mt-1">기획안 [현황·시장 분석] 칸을 1분 만에</p>
       </div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-6 space-y-4">
@@ -1753,9 +1888,11 @@ async function handleMarketScannerGenerate() {
 }
 
 function renderMarketScannerResult(el, data, isMock) {
+  const planText = `[현황·시장 분석] ${data.report}\n주요 경쟁: ${data.competitors.map(c => c.name).join(', ')}\n고객 불만: ${data.painPoints.join(' / ')}`;
   el.innerHTML = `
     <div class="fade-in space-y-4">
       ${isMock ? renderMockBanner() : ''}
+      <button onclick='sendToPlan(2, ${planArg(planText)})' class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [현황·시장 분석] 칸으로 보내기</button>
       <div class="bg-white rounded-2xl border border-gray-200 p-5">
         <h4 class="text-sm font-bold text-gray-900 mb-3">🔍 연관 키워드</h4>
         <div class="flex flex-wrap gap-2">
@@ -1805,7 +1942,7 @@ function renderEdgeMakerTool() {
     <div class="gradient-tool-header text-white py-10 px-4">
       <div class="max-w-3xl mx-auto">
         <h2 class="text-xl font-bold">컨셉 빌더 AI</h2>
-        <p class="text-sm text-gray-300 mt-1">고객 불만과 나의 강점으로 브랜드 컨셉을 만들어 드립니다</p>
+        <p class="text-sm text-gray-300 mt-1">기획안 [컨셉·차별점·이름] 칸을 한 줄로</p>
       </div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-6 space-y-4">
@@ -1891,9 +2028,12 @@ ${competitor ? `경쟁사 정보: ${competitor}` : ''}
 
 function renderEdgeMakerResult(el, data, isMock) {
   const colors = data.brandMood?.colors || ['#2563EB', '#F59E0B', '#F8FAFC'];
+  const names = data.brandNames || {};
+  const planText = `[컨셉·차별점·이름]\nUSP: ${data.usp}\n이름 후보: ${[names.emotional, names.intuitive, names.fun].filter(Boolean).join(' / ')}\n슬로건: "${data.slogan}"\n키워드: ${(data.brandMood?.keywords || []).join(', ')}`;
   el.innerHTML = `
     <div class="fade-in space-y-4">
       ${isMock ? renderMockBanner() : ''}
+      <button onclick='sendToPlan(4, ${planArg(planText)})' class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">📄 기획안 [컨셉·차별점·이름] 칸으로 보내기</button>
       <div class="bg-white rounded-2xl border border-gray-200 p-5">
         <h4 class="text-sm font-bold text-gray-900 mb-3">🎯 핵심 차별점 (USP)</h4>
         <div class="bg-blue-50 rounded-xl p-4 flex items-center justify-between">
