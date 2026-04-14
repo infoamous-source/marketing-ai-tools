@@ -97,13 +97,9 @@ input[type="number"] { -moz-appearance: textfield; }
 const GATE_CONFIG = {
   // API 키 (Gemini) - 수업 전 세팅, 수업 후 삭제
   apiKey: '',
-  // 조별 접속 코드 → PPT에 띄워서 안내
+  // 접속 코드 → PPT에 띄워서 안내 (수업 당일 날짜)
   teams: {
-    'ONE':   { name: '1조', emoji: '🦁' },
-    'TWO':   { name: '2조', emoji: '🦅' },
-    'THREE': { name: '3조', emoji: '🐬' },
-    'FOUR':  { name: '4조', emoji: '🐯' },
-    'TEST':  { name: '테스트', emoji: '🔧' },
+    '0414': { name: '수강생', emoji: '🥬' },
   },
 };
 
@@ -435,35 +431,27 @@ function getContrastRatio(hex1, hex2) {
   return (lighter + 0.05)/(darker + 0.05);
 }
 
-// ==================== GEMINI AI CLIENT ====================
-const GEMINI_KEY = 'marketing-ai-tools-gemini-key';
-
-function getApiKey() {
-  return localStorage.getItem(GEMINI_KEY);
-}
+// ==================== GEMINI AI CLIENT (서버리스 프록시 경유) ====================
+// 키는 Vercel 환경변수 GEMINI_API_KEY 에 저장. 클라이언트엔 노출 없음.
 
 function isAIEnabled() {
-  return !!getApiKey();
+  return true;
 }
 
 // 하위 호환: 기존 도구들이 callGeminiAPI 이름으로 호출하고 있어서 alias 유지
 async function callGeminiAPI(prompt) { return callGemini(prompt); }
 async function callGemini(prompt) {
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
-      })
+      body: JSON.stringify({ prompt })
     });
+    if (!response.ok) return null;
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    return data.text || null;
   } catch (e) {
-    console.error('Gemini API error:', e);
+    console.error('Gemini proxy error:', e);
     return null;
   }
 }
