@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>나에게 딱 맞는 마케팅 직무는?</title>
+  <meta name="description" content="15개 질문으로 알아보는 나의 마케팅 DNA">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'kk-red': '#E94B5C',
+            'kk-red-deep': '#D13848',
+            'kk-peach': '#F8A9A0',
+            'kk-cream': '#FFF5EC',
+            'kk-gold': '#E8A33D',
+            'kk-warm': '#F2C265',
+            'kk-brown': '#8B3A1F',
+            'kk-navy': '#2E3E5C',
+            'kk-navy-deep': '#1C2A44',
+            'kk-coral': '#F47B6E',
+            'kk-bg': '#FBF7F2',
+          },
+          fontFamily: {
+            sans: ['"Noto Sans KR"', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- 한글 폰트 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+  <!-- 컨페티 애니메이션 -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+  <style>
+    body { font-family: 'Noto Sans KR', system-ui, sans-serif; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* 인쇄(PDF 저장) 전용 스타일 */
+    @media print {
+      @page { size: A4; margin: 14mm; }
+      body { background: white !important; font-size: 11pt; }
+      .no-print { display: none !important; }
+      main { max-width: 100% !important; padding: 0 !important; }
+      .print-card { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
+      header { border-bottom: 2px solid #E94B5C !important; }
+    }
+  </style>
+</head>
+<body class="bg-kk-bg min-h-screen text-gray-900">
+
+  <!-- 상단 헤더 -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-40 no-print">
+    <div class="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="back-btn" class="p-1.5 rounded-lg hover:bg-gray-100 opacity-0 pointer-events-none transition-opacity">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-600"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+      </button>
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold text-kk-red bg-kk-cream px-2 py-0.5 rounded">마케팅 직무 적성 테스트</span>
+        <h1 class="font-bold text-kk-brown text-sm md:text-base">나의 마케팅 DNA 찾기</h1>
+      </div>
+    </div>
+  </header>
+
+  <!-- 인쇄 전용 헤더 (PDF에만 표시) -->
+  <div class="hidden print:block mb-6" id="print-header" style="display:none;">
+    <h1 class="text-2xl font-bold text-kk-brown">마케팅 직무 적성 테스트 결과</h1>
+    <p class="text-xs text-gray-500 mt-1" id="print-date"></p>
+  </div>
+
+  <main id="app" class="max-w-lg mx-auto px-4 py-8">
+    <!-- JS가 렌더링 -->
+  </main>
+
+  <script>
+    // ─── 페르소나 데이터 ───────────────────────────────────────────
+    const PERSONAS = {
+      CEO: {
+        id: 'CEO',
+        emoji: '🦁',
+        name: '큰그림 그리는 사람 (Brand Marketer)',
+        title: '브랜드 마케팅 (Brand Marketing)',
+        desc: '당신은 큰 그림을 그리는 사람이에요.\n세상이 어떻게 변하는지 잘 봐요.\n"우리가 어디로 가야 할까?"를 항상 생각해요.\n다른 사람이 못 보는 것을 먼저 발견해요.\n팀에서 방향을 정해주는 역할을 잘 해요.\n브랜드 마케팅이 잘 맞아요.\n가게나 회사의 이미지를 만드는 일을 해요.\n광고, 이름, 슬로건 같은 것을 만들어요.\n사람들이 "여기 좋다!"라고 느끼게 만들어요.\n큰 꿈을 가지고 성장시키는 마케터예요.',
+        strengths: [
+          '사람들이 좋아하는 것을 잘 아는 능력',
+          '팀을 이끄는 리더십',
+          '멀리 보고 계획을 세우는 능력',
+        ],
+        gradient: 'from-kk-gold to-kk-warm',
+        bar: 'bg-kk-gold',
+        bg: 'bg-kk-cream',
+        text: 'text-kk-brown',
+      },
+      PM: {
+        id: 'PM',
+        emoji: '💡',
+        name: '이야기 만드는 사람 (Content Creator)',
+        title: '콘텐츠 마케팅 (Content Marketing)',
+        desc: '당신은 이야기를 만드는 사람이에요.\n재미있는 아이디어가 머릿속에 가득해요.\n"이런 걸 만들면 사람들이 좋아하지 않을까?" 생각해요.\n글, 사진, 영상으로 이야기를 전하는 걸 좋아해요.\n사람들의 마음을 움직이는 것을 만들어요.\n콘텐츠 마케팅이 잘 맞아요.\n블로그, SNS, 유튜브에 올릴 것을 만들어요.\n재미있는 이야기를 잘 풀어내요.\n새로운 유행을 빨리 알고 시도해요.\n창의력으로 빛나게 하는 마케터예요.',
+        strengths: [
+          '새롭고 특별한 아이디어를 잘 내는 능력',
+          '재미있는 이야기를 잘 만드는 능력',
+          '유행을 빨리 아는 감각',
+        ],
+        gradient: 'from-kk-navy to-kk-navy-deep',
+        bar: 'bg-kk-navy',
+        bg: 'bg-kk-cream',
+        text: 'text-kk-navy',
+      },
+      CPO: {
+        id: 'CPO',
+        emoji: '📊',
+        name: '숫자로 말하는 사람 (Data Analyst)',
+        title: '퍼포먼스 마케팅 (Performance Marketing)',
+        desc: '당신은 숫자로 말하는 사람이에요.\n"얼마나 효과가 있었을까?"를 항상 확인해요.\n숫자를 보면 무엇이 문제인지 바로 알아요.\n느낌이 아니라 숫자로 결정하는 스타일이에요.\n광고 결과를 분석하고 더 좋은 방법을 찾아요.\n퍼포먼스 마케팅이 잘 맞아요.\n광고에 돈을 쓰면 얼마를 벌 수 있는지 계산해요.\n클릭 수, 구매 수 같은 숫자를 매일 확인해요.\n돈을 아끼면서 좋은 결과를 만들어요.\n숫자로 증명하는 똑똑한 마케터예요.',
+        strengths: [
+          '숫자를 보고 결정하는 능력',
+          '논리적으로 생각하고 문제를 해결하는 능력',
+          '결과를 측정하고 더 좋게 만드는 능력',
+        ],
+        gradient: 'from-kk-navy to-kk-coral',
+        bar: 'bg-kk-navy',
+        bg: 'bg-kk-cream',
+        text: 'text-kk-navy',
+      },
+      CMO: {
+        id: 'CMO',
+        emoji: '📣',
+        name: '사람 모으는 사람 (Community Builder)',
+        title: 'CRM 마케팅 (CRM Marketing)',
+        desc: '당신은 사람을 모으는 사람이에요.\n다른 사람의 기분을 잘 이해해요.\n"이 사람은 뭘 좋아할까?"를 잘 알아요.\n한번 온 손님이 다시 오게 만드는 재주가 있어요.\n사람과 사람 사이의 관계를 소중히 여겨요.\nCRM 마케팅이 잘 맞아요.\n손님에게 맞는 메시지를 보내는 일을 해요.\n회원 등급, 포인트, 쿠폰 같은 것을 만들어요.\n손님이 "여기가 최고!"라고 느끼게 만들어요.\n좋은 관계를 만들어서 키우는 마케터예요.',
+        strengths: [
+          '유행을 빨리 알아채는 능력',
+          '사람들이 공감하는 것을 잘 만드는 능력',
+          'SNS에서 소문을 잘 내는 감각',
+        ],
+        gradient: 'from-kk-red to-kk-peach',
+        bar: 'bg-kk-red',
+        bg: 'bg-kk-cream',
+        text: 'text-kk-red',
+      },
+      CSL: {
+        id: 'CSL',
+        emoji: '🤝',
+        name: '물건 파는 사람 (Sales Leader)',
+        title: '라이브커머스 (Live Commerce)',
+        desc: '당신은 물건을 파는 사람이에요.\n사람들 앞에서 이야기하는 걸 좋아해요.\n"이 물건이 왜 좋은지" 설명하면 다들 사고 싶어해요.\n손님이 망설이면 딱 맞는 말로 마음을 움직여요.\n목표를 정하면 끝까지 하는 성격이에요.\n라이브커머스가 잘 맞아요.\n카메라 앞에서 물건을 소개하고 팔아요.\n실시간으로 손님과 이야기하면서 팔아요.\n"지금 안 사면 아쉬워요!" 같은 말이 자연스러워요.\n행동력으로 결과를 만드는 마케터예요.',
+        strengths: [
+          '사람을 잘 설득하는 능력',
+          '손님이 원하는 것을 잘 아는 능력',
+          '목표를 끝까지 이루는 힘',
+        ],
+        gradient: 'from-kk-gold to-kk-peach',
+        bar: 'bg-kk-gold',
+        bg: 'bg-kk-cream',
+        text: 'text-kk-brown',
+      },
+    };
+
+    const PERSONA_ORDER = ['CEO', 'PM', 'CPO', 'CMO', 'CSL'];
+
+    // ─── 질문 세트 ────────────────────────────────────────────────
+    const QUESTION_SETS = [
+      {
+        id: 'set1',
+        questions: [
+          { id: 'Q1', situation: '다른 반이 우리보다 인기 있다!', A: '우리만의 특별한 점을 찾는다', B: '왜 그런지 이유를 조사한다', wA: ['CEO'], wB: ['PM'] },
+          { id: 'Q2', situation: '학교 행사 포스터를 만든다면?', A: '정보를 정확하게 쓴다', B: '예쁜 그림과 재미있는 글을 쓴다', wA: ['CPO'], wB: ['CMO'] },
+          { id: 'Q3', situation: '반에서 큰 행사를 준비한다!', A: '전체 계획을 세우고 역할을 나눈다', B: '재미있는 아이디어를 많이 낸다', wA: ['CSL'], wB: ['CEO'] },
+          { id: 'Q4', situation: '동아리에서 물건을 팔려는데 돈이 부족하다!', A: 'SNS에 올려서 소문을 낸다', B: '직접 사람들에게 추천한다', wA: ['CMO'], wB: ['CPO'] },
+          { id: 'Q5', situation: '친구들과 계획을 세울 때 나는?', A: '다른 팀은 뭘 하는지 먼저 본다', B: '새로운 생각을 먼저 제안한다', wA: ['PM'], wB: ['CSL'] },
+          { id: 'Q6', situation: '친구가 내게 불만을 말했다!', A: '무엇이 문제인지 차근차근 생각한다', B: '직접 만나서 이야기를 듣는다', wA: ['CEO', 'CPO'], wB: ['PM'] },
+          { id: 'Q7', situation: '좋은 결과의 기준은?', A: '많은 사람이 알게 된 것', B: '많이 팔린 것', wA: ['CMO'], wB: ['CSL'] },
+          { id: 'Q8', situation: '좋은 생각이 떠올랐다!', A: '먼저 정보를 찾아본다', B: '바로 시작해본다', wA: ['CPO'], wB: ['PM'] },
+          { id: 'Q9', situation: 'SNS에 올릴 사진을 고른다면?', A: '요즘 유행하는 것을 활용한다', B: '전과 후를 비교해서 보여준다', wA: ['CEO'], wB: ['CMO'] },
+          { id: 'Q10', situation: '돈 10만원으로 광고를 한다면?', A: '여러 방법을 비교해본다', B: '유명한 사람에게 부탁한다', wA: ['CSL'], wB: ['CPO'] },
+          { id: 'Q11', situation: '어려운 상황이 왔다!', A: '앞으로의 큰 계획을 다시 세운다', B: '지금 바로 할 수 있는 것을 한다', wA: ['PM', 'CMO'], wB: ['CEO'] },
+          { id: 'Q12', situation: '계획서를 쓸 때 나는?', A: '이야기와 그림 중심으로 쓴다', B: '숫자와 목표 중심으로 쓴다', wA: ['CPO'], wB: ['CSL'] },
+          { id: 'Q13', situation: '발표 대회에서 이기려면?', A: '특별한 아이디어로 이긴다', B: '잘 설명해서 마음을 움직인다', wA: ['CEO'], wB: ['PM'] },
+          { id: 'Q14', situation: '1년 후에 되고 싶은 모습은?', A: '모두가 인정하는 전문가', B: '많은 사람이 따르는 인기인', wA: ['CMO'], wB: ['CSL'] },
+          { id: 'Q15', situation: '팀에서 나를 뽑는 이유는?', A: '계획을 잘 세우는 능력', B: '재미있는 생각을 잘 하는 능력', wA: ['CEO', 'CPO'], wB: ['PM', 'CMO'] },
+        ],
+      },
+      {
+        id: 'set2',
+        questions: [
+          { id: 'Q1', situation: '친구가 맛있는 식당을 알려달라고 한다!', A: '인터넷 별점을 확인해서 알려준다', B: '내가 가본 곳 중 좋은 곳을 알려준다', wA: ['PM'], wB: ['CEO'] },
+          { id: 'Q2', situation: '학교 축제에서 음식을 판다!', A: '무엇이 잘 팔릴지 물어본다', B: 'SNS에 올리면 예쁠 메뉴를 만든다', wA: ['CMO'], wB: ['CPO'] },
+          { id: 'Q3', situation: '요리할 때 나의 스타일은?', A: '요리법을 정확하게 따라 한다', B: '느낌대로 만들어 본다', wA: ['CEO'], wB: ['CSL'] },
+          { id: 'Q4', situation: '새로운 취미를 시작하려고 한다!', A: '먼저 정보를 많이 찾아본다', B: '일단 해보면서 배운다', wA: ['CPO'], wB: ['PM'] },
+          { id: 'Q5', situation: '학교에서 발표할 때 나는?', A: '숫자와 그래프로 설명한다', B: '재미있는 이야기로 설명한다', wA: ['CSL'], wB: ['CMO'] },
+          { id: 'Q6', situation: '친구 생일 파티를 준비한다면?', A: '돈과 장소를 먼저 정한다', B: '깜짝 이벤트를 준비한다', wA: ['PM'], wB: ['CPO'] },
+          { id: 'Q7', situation: '좋아하는 카페에 손님이 줄었다!', A: '다른 카페와 비교해 본다', B: 'SNS 홍보 아이디어를 알려준다', wA: ['CEO'], wB: ['CMO'] },
+          { id: 'Q8', situation: '안 쓰는 물건을 팔려고 한다!', A: '비슷한 물건의 가격을 먼저 본다', B: '예쁜 사진을 찍어서 올린다', wA: ['CSL'], wB: ['CEO'] },
+          { id: 'Q9', situation: '동아리 홍보를 맡았다!', A: '작년 자료를 보고 계획을 세운다', B: '재미있는 영상을 만들어 올린다', wA: ['CPO'], wB: ['CMO'] },
+          { id: 'Q10', situation: '배달 음식을 고를 때 나는?', A: '별점과 후기를 꼼꼼히 본다', B: '사진이 맛있어 보이는 곳을 고른다', wA: ['PM', 'CSL'], wB: ['CEO'] },
+          { id: 'Q11', situation: '편의점에서 물건을 더 팔아야 한다!', A: '잘 팔리는 시간에 인기 물건을 앞에 놓는다', B: '손님에게 직접 추천한다', wA: ['CMO'], wB: ['CPO'] },
+          { id: 'Q12', situation: '유튜브를 시작한다면?', A: '사람들이 많이 검색하는 주제를 고른다', B: '내가 좋아하는 것을 찍는다', wA: ['CEO'], wB: ['PM'] },
+          { id: 'Q13', situation: '학교 매점에 새 메뉴를 넣는다면?', A: '학생들에게 뭘 먹고 싶은지 물어본다', B: '요즘 유행하는 음식을 바로 넣는다', wA: ['CSL'], wB: ['CPO'] },
+          { id: 'Q14', situation: '동네에 새 가게가 열렸다!', A: '이 동네에 비슷한 가게가 몇 개인지 본다', B: 'SNS 이벤트를 만들어 준다', wA: ['PM', 'CMO'], wB: ['CSL'] },
+          { id: 'Q15', situation: '친구가 쿠키를 만들어서 같이 팔자고 한다!', A: '재료비와 이익을 먼저 계산한다', B: '예쁜 포장과 이름을 먼저 정한다', wA: ['CEO', 'CPO'], wB: ['CMO', 'CSL'] },
+        ],
+      },
+      {
+        id: 'set3',
+        questions: [
+          { id: 'Q1', situation: '새로 온 사람을 위한 환영회를 준비한다!', A: '돈과 장소를 먼저 정한다', B: '감동적인 이벤트를 준비한다', wA: ['CEO'], wB: ['CMO'] },
+          { id: 'Q2', situation: '월급을 받으면 가장 먼저 하는 것은?', A: '저축 계획을 세운다', B: '사고 싶은 것을 산다', wA: ['PM'], wB: ['CPO'] },
+          { id: 'Q3', situation: '좋아하는 사람에게 선물을 고를 때?', A: '그 사람이 필요한 것을 산다', B: '직접 편지를 쓰고 특별한 것을 준비한다', wA: ['CSL'], wB: ['CEO'] },
+          { id: 'Q4', situation: '새로운 프로젝트의 리더가 됐다!', A: '일정과 목표를 먼저 정한다', B: '팀원들의 기분을 먼저 살핀다', wA: ['CMO'], wB: ['PM'] },
+          { id: 'Q5', situation: '돈을 더 벌고 싶다!', A: '시간 대비 돈이 가장 많은 일을 찾는다', B: '내가 잘하는 것으로 돈을 벌어본다', wA: ['CPO'], wB: ['CSL'] },
+          { id: 'Q6', situation: '친구 사이에 오해가 생겼다!', A: '상황을 정리해서 차근차근 설명한다', B: '직접 만나서 솔직하게 이야기한다', wA: ['CEO'], wB: ['PM'] },
+          { id: 'Q7', situation: '가게를 열면 먼저 뭘 할까?', A: '이 동네에 사람이 얼마나 다니는지 본다', B: '가게 분위기와 이름을 먼저 정한다', wA: ['CMO'], wB: ['CPO'] },
+          { id: 'Q8', situation: '투자를 시작하려고 한다!', A: '숫자와 자료를 꼼꼼히 본다', B: '느낌이 좋은 곳에 과감하게 투자한다', wA: ['CSL'], wB: ['PM'] },
+          { id: 'Q9', situation: '같이 일하는 사람이 힘들어한다!', A: '무엇이 문제인지 같이 분석한다', B: '먼저 마음을 공감해준다', wA: ['CEO', 'CPO'], wB: ['CMO'] },
+          { id: 'Q10', situation: 'SNS에 올린 글에 반응이 없다!', A: '언제 올리면 좋은지 시간을 분석한다', B: '더 재미있는 글을 만들어 본다', wA: ['PM'], wB: ['CSL'] },
+          { id: 'Q11', situation: '월급을 더 달라고 말해야 한다!', A: '내가 한 일의 자료를 준비한다', B: '열심히 한 마음을 진심으로 전한다', wA: ['CPO'], wB: ['CMO'] },
+          { id: 'Q12', situation: '친구가 사업 아이디어를 가져왔다!', A: '이 아이디어로 돈을 벌 수 있는지 물어본다', B: '더 재미있는 아이디어를 같이 생각한다', wA: ['CEO'], wB: ['CSL'] },
+          { id: 'Q13', situation: '손님을 더 만족시키라고 한다!', A: '불만 글을 분석해서 문제를 찾는다', B: '손님에게 감사 메시지를 보낸다', wA: ['PM', 'CMO'], wB: ['CPO'] },
+          { id: 'Q14', situation: '다른 일을 하고 싶다!', A: '월급과 좋은 점을 비교해 본다', B: '내가 진짜 하고 싶은 일을 먼저 생각한다', wA: ['CSL'], wB: ['CEO'] },
+          { id: 'Q15', situation: '팀이 목표를 달성하지 못했다!', A: '어디가 문제인지 자료를 분석한다', B: '팀의 기분을 올리고 새 방법을 같이 찾는다', wA: ['CPO', 'CSL'], wB: ['PM', 'CEO'] },
+        ],
+      },
+    ];
+
+    // ─── 상태 ────────────────────────────────────────────────────
+    const state = {
+      phase: 'intro', // intro / test / loading / result
+      currentQuestion: 0,
+      answers: {},
+      activeSet: null,
+      result: null,
+      isTransitioning: false,
+      loadingStep: 0,
+      previousResult: null,
+    };
+
+    const STORAGE_KEY = 'aptitudeTest:lastResult';
+
+    // ─── 유틸 ────────────────────────────────────────────────────
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      })[m]);
+    }
+
+    function loadPrevious() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch { return null; }
+    }
+
+    function savePrevious(data) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+    }
+
+    function pickSet(previousSetId) {
+      if (!previousSetId) {
+        return QUESTION_SETS[Math.floor(Math.random() * QUESTION_SETS.length)];
+      }
+      const available = QUESTION_SETS.filter((s) => s.id !== previousSetId);
+      return available[Math.floor(Math.random() * available.length)];
+    }
+
+    function calculateResult(answers, questions) {
+      const scores = { CEO: 0, PM: 0, CPO: 0, CMO: 0, CSL: 0 };
+      for (const [qid, choice] of Object.entries(answers)) {
+        const q = questions.find((x) => x.id === qid);
+        if (!q) continue;
+        const weights = choice === 'A' ? q.wA : q.wB;
+        for (const p of weights) scores[p] += 1;
+      }
+      let resultType = 'CEO', maxScore = -1;
+      for (const p of PERSONA_ORDER) {
+        if (scores[p] > maxScore) { maxScore = scores[p]; resultType = p; }
+      }
+      return { resultType, scores };
+    }
+
+    // ─── 화면 렌더링 ─────────────────────────────────────────────
+    const app = document.getElementById('app');
+    const backBtn = document.getElementById('back-btn');
+    const printHeader = document.getElementById('print-header');
+    const printDate = document.getElementById('print-date');
+
+    function render() {
+      // 뒤로가기 버튼 상태
+      const canGoBack = state.phase === 'intro' || state.phase === 'result';
+      backBtn.classList.toggle('opacity-0', !canGoBack);
+      backBtn.classList.toggle('pointer-events-none', !canGoBack);
+
+      // 인쇄용 헤더 (결과 화면에서만)
+      printHeader.style.display = state.phase === 'result' ? '' : 'none';
+
+      if (state.phase === 'intro') renderIntro();
+      else if (state.phase === 'test') renderTest();
+      else if (state.phase === 'loading') renderLoading();
+      else if (state.phase === 'result') renderResult();
+    }
+
+    function renderIntro() {
+      const prev = state.previousResult;
+      const hasPrev = !!prev;
+
+      let prevCard = '';
+      if (hasPrev) {
+        const p = PERSONAS[prev.resultType];
+        prevCard = `
+          <div class="bg-white rounded-2xl border border-gray-200 p-6 print-card">
+            <p class="text-xs text-gray-400 mb-3">이전 결과</p>
+            <div class="flex items-center gap-3">
+              <span class="text-3xl">${p.emoji}</span>
+              <div>
+                <p class="font-bold text-gray-800">${escapeHtml(p.name)}</p>
+                <p class="text-sm text-gray-500">${escapeHtml(p.title)}</p>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      app.innerHTML = `
+        <div class="space-y-6 fade-in">
+          <div class="bg-gradient-to-br from-kk-red to-kk-peach rounded-2xl p-8 text-center text-white print-card">
+            <div class="w-16 h-16 mx-auto mb-4 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2"></path><path d="M12 19v2"></path><path d="M5.63 5.63l1.41 1.41"></path><path d="M16.95 16.95l1.42 1.42"></path><path d="M3 12h2"></path><path d="M19 12h2"></path><path d="M5.63 18.37l1.41-1.41"></path><path d="M16.95 7.05l1.42-1.42"></path><circle cx="12" cy="12" r="4"></circle></svg>
+            </div>
+            <h2 class="text-xl font-bold mb-2">나에게 딱 맞는 마케팅 직무는?</h2>
+            <p class="text-sm text-white/90">15개 질문으로 알아보는 나의 마케팅 DNA</p>
+          </div>
+
+          ${prevCard}
+
+          <button id="start-btn" class="w-full py-4 bg-kk-red hover:bg-kk-red-deep text-white font-bold rounded-2xl transition-colors text-lg shadow-lg">
+            ${hasPrev ? '다시 테스트하기' : '테스트 시작하기'}
+          </button>
+
+          <p class="text-center text-xs text-gray-400">약 2~3분 소요 · 총 15문항</p>
+        </div>
+      `;
+      document.getElementById('start-btn').onclick = startTest;
+    }
+
+    function renderTest() {
+      const qs = state.activeSet.questions;
+      const q = qs[state.currentQuestion];
+      const total = qs.length;
+      const percent = Math.round(((state.currentQuestion + 1) / total) * 100);
+
+      app.innerHTML = `
+        <div class="space-y-6">
+          <div class="space-y-2">
+            <div class="flex justify-between items-center text-sm">
+              <span class="font-bold text-gray-700">${state.currentQuestion + 1}/${total}</span>
+              <span class="text-gray-400">${percent}%</span>
+            </div>
+            <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div class="h-full bg-kk-red rounded-full transition-all duration-500 ease-out" style="width:${percent}%"></div>
+            </div>
+          </div>
+
+          <div class="${state.isTransitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'} transition-all duration-300">
+            <div class="bg-white rounded-2xl border border-gray-200 p-6 mb-4 shadow-sm">
+              <p class="text-xs text-kk-red font-bold mb-2">Q${state.currentQuestion + 1}.</p>
+              <p class="text-gray-800 font-medium leading-relaxed">${escapeHtml(q.situation)}</p>
+            </div>
+
+            <div class="space-y-3">
+              <button data-choice="A" class="choice-btn w-full text-left bg-white rounded-2xl border border-gray-200 p-5 hover:border-kk-red hover:bg-kk-cream/50 transition-all duration-200 active:scale-[0.98]">
+                <div class="flex items-start gap-3">
+                  <span class="shrink-0 w-7 h-7 bg-kk-cream text-kk-red font-bold text-sm rounded-lg flex items-center justify-center">A</span>
+                  <p class="text-gray-700 text-sm leading-relaxed pt-0.5">${escapeHtml(q.A)}</p>
+                </div>
+              </button>
+              <button data-choice="B" class="choice-btn w-full text-left bg-white rounded-2xl border border-gray-200 p-5 hover:border-kk-peach hover:bg-kk-cream/50 transition-all duration-200 active:scale-[0.98]">
+                <div class="flex items-start gap-3">
+                  <span class="shrink-0 w-7 h-7 bg-kk-cream text-kk-red font-bold text-sm rounded-lg flex items-center justify-center">B</span>
+                  <p class="text-gray-700 text-sm leading-relaxed pt-0.5">${escapeHtml(q.B)}</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.querySelectorAll('.choice-btn').forEach((btn) => {
+        btn.onclick = () => selectOption(btn.dataset.choice);
+      });
+    }
+
+    function renderLoading() {
+      const messages = [
+        '마케팅 성격을 알아보는 중...',
+        '성격을 분석하는 중...',
+        '당신에게 딱 맞는 일을 찾았어요!',
+      ];
+      app.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-20 space-y-8 fade-in">
+          <div class="spin">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-kk-red"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+          </div>
+          <div class="text-center space-y-2">
+            ${messages.map((m, idx) => `
+              <p class="text-sm transition-all duration-500 ${idx <= state.loadingStep ? 'opacity-100 text-gray-700' : 'opacity-0 text-gray-400'} ${idx === state.loadingStep ? 'font-bold' : ''}">${escapeHtml(m)}</p>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderResult() {
+      const r = state.result;
+      const persona = PERSONAS[r.resultType];
+      const maxScore = Math.max(...Object.values(r.scores), 1);
+
+      // 인쇄용 날짜
+      const now = new Date();
+      printDate.textContent = `${now.getFullYear()}. ${now.getMonth() + 1}. ${now.getDate()} · 결과: ${persona.emoji} ${persona.name}`;
+
+      const strengthsHtml = persona.strengths.map((s, i) => `
+        <div class="flex items-start gap-2">
+          <span class="shrink-0 mt-0.5 w-5 h-5 rounded-full ${persona.bg} ${persona.text} text-xs font-bold flex items-center justify-center">${i + 1}</span>
+          <p class="text-sm text-gray-600">${escapeHtml(s)}</p>
+        </div>
+      `).join('');
+
+      const chartRows = PERSONA_ORDER.map((pid) => {
+        const score = r.scores[pid];
+        const width = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+        const isTop = pid === r.resultType;
+        const pp = PERSONAS[pid];
+        return `
+          <div class="flex items-center gap-3">
+            <span class="text-lg w-7 text-center">${pp.emoji}</span>
+            <span class="text-xs w-28 shrink-0 ${isTop ? 'font-bold text-gray-800' : 'text-gray-500'}">${escapeHtml(pp.title.split(' (')[0])}</span>
+            <div class="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-700 ease-out ${pp.bar}" style="width:${width}%"></div>
+            </div>
+            <span class="text-xs w-6 text-right ${isTop ? 'font-bold text-gray-800' : 'text-gray-400'}">${score}</span>
+          </div>
+        `;
+      }).join('');
+
+      app.innerHTML = `
+        <div class="space-y-6 fade-in" id="result-area">
+          <div class="bg-gradient-to-br ${persona.gradient} rounded-2xl p-8 text-center text-white print-card">
+            <span class="text-5xl block mb-4">${persona.emoji}</span>
+            <h2 class="text-2xl font-bold mb-1">${escapeHtml(persona.name)}</h2>
+            <p class="text-white/90 text-sm">${escapeHtml(persona.title)}</p>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-gray-200 p-6 print-card">
+            <p class="text-gray-700 text-sm leading-relaxed mb-4 whitespace-pre-line">${escapeHtml(persona.desc)}</p>
+            <div class="space-y-2">${strengthsHtml}</div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-gray-200 p-6 print-card">
+            <h3 class="font-bold text-kk-brown text-sm mb-4">유형별 점수</h3>
+            <div class="space-y-3">${chartRows}</div>
+          </div>
+
+          <div class="space-y-3 no-print">
+            <button id="pdf-btn" class="w-full py-4 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl transition-colors text-base flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              결과를 PDF로 저장하기
+            </button>
+            <div class="flex gap-3">
+              <button id="restart-btn" class="flex-1 py-3 bg-white border border-gray-200 text-gray-600 font-medium rounded-2xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                다시 테스트
+              </button>
+              <button id="share-btn" class="flex-1 py-3 bg-white border border-gray-200 text-gray-600 font-medium rounded-2xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                공유
+              </button>
+            </div>
+            <p class="text-center text-[11px] text-gray-400">PDF 저장 버튼을 누르면 인쇄 창이 열립니다. 대상을 <b>"PDF로 저장"</b>으로 선택하세요.</p>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('pdf-btn').onclick = () => window.print();
+      document.getElementById('restart-btn').onclick = restart;
+      document.getElementById('share-btn').onclick = share;
+
+      // 컨페티
+      if (window.confetti) {
+        window.confetti({
+          particleCount: 120, spread: 80, origin: { y: 0.6 },
+          colors: ['#f43f5e', '#ec4899', '#f59e0b', '#8b5cf6', '#3b82f6', '#10b981'],
+        });
+      }
+    }
+
+    // ─── 이벤트 핸들러 ──────────────────────────────────────────
+    function startTest() {
+      const prevSetId = state.previousResult?.questionSetId;
+      state.activeSet = pickSet(prevSetId);
+      state.answers = {};
+      state.currentQuestion = 0;
+      state.result = null;
+      state.phase = 'test';
+      render();
+    }
+
+    function selectOption(choice) {
+      if (state.isTransitioning) return;
+      const qs = state.activeSet.questions;
+      const q = qs[state.currentQuestion];
+      state.answers[q.id] = choice;
+      state.isTransitioning = true;
+      render();
+
+      setTimeout(() => {
+        if (state.currentQuestion + 1 < qs.length) {
+          state.currentQuestion += 1;
+        } else {
+          state.phase = 'loading';
+          state.loadingStep = 0;
+          render();
+          runLoading();
+          return;
+        }
+        state.isTransitioning = false;
+        render();
+      }, 400);
+    }
+
+    function runLoading() {
+      const timers = [];
+      timers.push(setTimeout(() => { state.loadingStep = 1; render(); }, 1000));
+      timers.push(setTimeout(() => { state.loadingStep = 2; render(); }, 2000));
+      timers.push(setTimeout(() => {
+        const computed = calculateResult(state.answers, state.activeSet.questions);
+        state.result = computed;
+        const saved = {
+          completedAt: new Date().toISOString(),
+          answers: state.answers,
+          resultType: computed.resultType,
+          scores: computed.scores,
+          questionSetId: state.activeSet.id,
+        };
+        savePrevious(saved);
+        state.previousResult = saved;
+        state.phase = 'result';
+        render();
+      }, 3000));
+    }
+
+    function restart() {
+      state.phase = 'intro';
+      state.currentQuestion = 0;
+      state.answers = {};
+      state.result = null;
+      state.loadingStep = 0;
+      render();
+    }
+
+    async function share() {
+      const r = state.result;
+      if (!r) return;
+      const p = PERSONAS[r.resultType];
+      const shareText = `${p.emoji} ${p.name} — ${p.title}\n#마케팅직무적성테스트`;
+      if (navigator.share) {
+        try { await navigator.share({ title: '나의 마케팅 적성 결과', text: shareText }); return; } catch {}
+      }
+      try {
+        await navigator.clipboard.writeText(shareText);
+        alert('결과가 복사되었습니다!');
+      } catch {
+        alert(shareText);
+      }
+    }
+
+    backBtn.onclick = () => {
+      if (state.phase === 'result') restart();
+    };
+
+    // ─── 초기화 ─────────────────────────────────────────────────
+    state.previousResult = loadPrevious();
+    render();
+  </script>
+</body>
+</html>
